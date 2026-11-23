@@ -11,9 +11,17 @@ using IOPath = System.IO.Path;
 
 namespace Jaosnake.CeniReload.Storage
 {
+    public enum SaveSlotResult
+    {
+        Saved,
+        AllSlotsLocked,
+        Failed
+    }
+
     public static class VaultRepository
     {
         public const int MaxSlotsPerSurvivor = 5;
+        public const int NoAvailableSlot = -1;
         private const string FileExtension = ".cenireload.json";
 
         private static string VaultRoot => IOPath.Combine(Paths.ConfigPath, "Jaosnake.CENI_RELOAD", "Vault");
@@ -54,22 +62,82 @@ namespace Jaosnake.CeniReload.Storage
                 if (slots[i] == null) return i + 1;
             }
 
-            int oldestSlot = 1;
+            int oldestUnlockedSlot = NoAvailableSlot;
             DateTime oldestTime = DateTime.MaxValue;
             for (int i = 0; i < MaxSlotsPerSurvivor; i++)
             {
-                if (DateTime.TryParse(slots[i].savedUtcIso, CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal, out DateTime t) && t < oldestTime)
+                var snap = slots[i];
+                if (snap == null || snap.isLocked) continue;
+
+                if (DateTime.TryParse(snap.savedUtcIso, CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal, out DateTime t))
                 {
-                    oldestTime = t;
-                    oldestSlot = i + 1;
+                    if (t < oldestTime)
+                    {
+                        oldestTime = t;
+                        oldestUnlockedSlot = i + 1;
+                    }
+                }
+                else if (oldestUnlockedSlot == NoAvailableSlot)
+                {
+                    oldestUnlockedSlot = i + 1;
                 }
             }
-            return oldestSlot;
+            return oldestUnlockedSlot;
         }
 
-        public static bool SaveSnapshot(CheckpointSnapshot snapshot, int targetSlot = -1)
+        public static bool AreAllSlotsLocked(string profileKey, string survivorBodyName)
         {
-            if (snapshot == null || string.IsNullOrEmpty(snapshot.survivorBodyName)) return false;
+            if (string.IsNullOrEmpty(survivorBodyName)) return false;
+            var slots = GetSurvivorSlots(profileKey, survivorBodyName);
+            for (int i = 0; i < MaxSlotsPerSurvivor; i++)
+            {
+                if (slots[i] == null || !slots[i].isLocked)
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        public static bool ToggleSlotLock(string profileKey, string survivorBodyName, int slotIndex, out bool newLockedState)
+        {
+            newLockedState = false;
+            var snapshot = LoadSlot(profileKey, survivorBodyName, slotIndex);
+            if (snapshot == null) return false;
+
+            snapshot.isLocked = !snapshot.isLocked;
+            newLockedState = snapshot.isLocked;
+
+            try
+            {
+                string dir = GetSurvivorDirectory(profileKey, survivorBodyName);
+                Directory.CreateDirectory(dir);
+                string finalPath = GetSlotFilePath(profileKey, survivorBodyName, slotIndex);
+                string tempPath = finalPath + ".tmp";
+
+                string json = JsonUtility.ToJson(snapshot, true);
+                File.WriteAllText(tempPath, json);
+
+                if (File.Exists(finalPath))
+                {
+                    File.Delete(finalPath);
+                }
+                File.Move(tempPath, finalPath);
+
+                CeniReloadPlugin.Log?.LogInfo($"{(newLockedState ? "Locked" : "Unlocked")} checkpoint: {survivorBodyName} Slot {slotIndex}");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                CeniReloadPlugin.Log?.LogError($"Failed to toggle lock on {survivorBodyName} Slot {slotIndex}: {ex}");
+                return false;
+            }
+        }
+
+        public static SaveSlotResult SaveSnapshotWithStatus(CheckpointSnapshot snapshot, int targetSlot = -1)
+        {
+            if (snapshot == null || string.IsNullOrEmpty(snapshot.survivorBodyName))
+                return SaveSlotResult.Failed;
 
             try
             {
@@ -78,11 +146,29 @@ namespace Jaosnake.CeniReload.Storage
                     : snapshot.profileKey;
                 snapshot.profileKey = profileKey;
 
-                int slot = (targetSlot >= 1 && targetSlot <= MaxSlotsPerSurvivor)
-                    ? targetSlot
-                    : PickAutoSaveSlot(profileKey, snapshot.survivorBodyName);
+                int slot;
+                if (targetSlot >= 1 && targetSlot <= MaxSlotsPerSurvivor)
+                {
+                    var existing = LoadSlot(profileKey, snapshot.survivorBodyName, targetSlot);
+                    if (existing != null && existing.isLocked)
+                    {
+                        CeniReloadPlugin.Log?.LogWarning($"Refused to overwrite locked checkpoint: {snapshot.survivorBodyName} Slot {targetSlot}.");
+                        return SaveSlotResult.AllSlotsLocked;
+                    }
+                    slot = targetSlot;
+                }
+                else
+                {
+                    slot = PickAutoSaveSlot(profileKey, snapshot.survivorBodyName);
+                    if (slot == NoAvailableSlot)
+                    {
+                        CeniReloadPlugin.Log?.LogWarning($"Auto-save skipped: all {MaxSlotsPerSurvivor} slots for {snapshot.survivorBodyName} are locked.");
+                        return SaveSlotResult.AllSlotsLocked;
+                    }
+                }
 
                 snapshot.slotIndex = slot;
+                snapshot.isLocked = false;
                 snapshot.savedUtcIso = DateTime.UtcNow.ToString("O");
 
                 string dir = GetSurvivorDirectory(profileKey, snapshot.survivorBodyName);
@@ -101,13 +187,18 @@ namespace Jaosnake.CeniReload.Storage
                 File.Move(tempPath, finalPath);
 
                 CeniReloadPlugin.Log?.LogInfo($"Saved checkpoint: {snapshot.survivorBodyName} Slot {slot} (Stage {snapshot.stageClearCount + 1}: {snapshot.stageSceneName})");
-                return true;
+                return SaveSlotResult.Saved;
             }
             catch (Exception ex)
             {
                 CeniReloadPlugin.Log?.LogError($"Failed to save checkpoint: {ex}");
-                return false;
+                return SaveSlotResult.Failed;
             }
+        }
+
+        public static bool SaveSnapshot(CheckpointSnapshot snapshot, int targetSlot = -1)
+        {
+            return SaveSnapshotWithStatus(snapshot, targetSlot) == SaveSlotResult.Saved;
         }
 
         public static CheckpointSnapshot LoadSlot(string profileKey, string survivorBodyName, int slotIndex)
@@ -180,6 +271,13 @@ namespace Jaosnake.CeniReload.Storage
             string path = GetSlotFilePath(profileKey, survivorBodyName, slotIndex);
             if (!File.Exists(path)) return false;
 
+            var existing = LoadSlot(profileKey, survivorBodyName, slotIndex);
+            if (existing != null && existing.isLocked)
+            {
+                CeniReloadPlugin.Log?.LogWarning($"Refused to delete locked checkpoint: {survivorBodyName} Slot {slotIndex}");
+                return false;
+            }
+
             try
             {
                 File.Delete(path);
@@ -188,7 +286,7 @@ namespace Jaosnake.CeniReload.Storage
             }
             catch (Exception ex)
             {
-                CeniReloadPlugin.Log?.LogError($"Failed to delete checkpoint '{path}': {ex.Message}");
+                CeniReloadPlugin.Log?.LogError($"Failed to delete checkpoint '{path}': {ex}");
                 return false;
             }
         }

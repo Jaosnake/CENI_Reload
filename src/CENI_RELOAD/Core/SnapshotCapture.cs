@@ -6,6 +6,7 @@ using HarmonyLib;
 using Jaosnake.CeniReload.Model;
 using Jaosnake.CeniReload.Storage;
 using RoR2;
+using RoR2.Artifacts;
 using UnityEngine;
 using UnityEngine.Networking;
 
@@ -14,6 +15,12 @@ namespace Jaosnake.CeniReload.Core
     public static class SnapshotCapture
     {
         private static readonly FieldInfo EventFlagsField = AccessTools.Field(typeof(Run), "eventFlags");
+        private static readonly FieldInfo SimulacrumPatternIdxField = AccessTools.Field(typeof(InfiniteTowerRun), "enemyItemPatternIndex");
+        private static readonly FieldInfo SimulacrumEnemyInvField = AccessTools.Field(typeof(InfiniteTowerRun), "enemyInventory");
+        private static readonly FieldInfo EvolutionInventoryField = AccessTools.Field(typeof(MonsterTeamGainsItemsArtifactManager), "monsterTeamInventory");
+        private static readonly FieldInfo EvolutionIteratorField = AccessTools.Field(typeof(MonsterTeamGainsItemsArtifactManager), "currentItemIterator");
+        private static readonly FieldInfo DevotionInstanceListField = AccessTools.Field(typeof(DevotionInventoryController), "InstanceList");
+        private static readonly FieldInfo DevotionInventoryField = AccessTools.Field(typeof(DevotionInventoryController), "_devotionMinionInventory");
 
         public static CheckpointSnapshot CaptureCurrentRun()
         {
@@ -53,6 +60,8 @@ namespace Jaosnake.CeniReload.Core
                     }
                 }
             }
+
+            CaptureExtraModeAndArtifactState(run, snapshot);
 
             var diffDef = DifficultyCatalog.GetDifficultyDef(run.selectedDifficulty);
             snapshot.difficultyName = run.selectedDifficulty.ToString();
@@ -151,7 +160,80 @@ namespace Jaosnake.CeniReload.Core
                 player.minions.Add(minionSnap);
             }
 
+            CaptureDevotionItems(master, player.devotionItems);
+
             return player;
+        }
+
+        private static void CaptureExtraModeAndArtifactState(Run run, CheckpointSnapshot snapshot)
+        {
+            if (run is InfiniteTowerRun towerRun)
+            {
+                snapshot.simulacrumWaveIndex = towerRun.waveIndex;
+                if (SimulacrumPatternIdxField != null && SimulacrumPatternIdxField.GetValue(towerRun) is int patternIdx)
+                {
+                    snapshot.simulacrumEnemyItemPatternIndex = patternIdx;
+                }
+                if (SimulacrumEnemyInvField?.GetValue(towerRun) is Inventory enemyInv && enemyInv != null)
+                {
+                    CapturePermanentItemsOnly(enemyInv, snapshot.simulacrumEnemyItems);
+                }
+            }
+
+            if (EvolutionInventoryField?.GetValue(null) is Inventory monsterInv && monsterInv != null)
+            {
+                CapturePermanentItemsOnly(monsterInv, snapshot.evolutionMonsterItems);
+                if (EvolutionIteratorField != null && EvolutionIteratorField.GetValue(null) is int iter)
+                {
+                    snapshot.evolutionItemIterator = iter;
+                }
+            }
+        }
+
+        private static void CaptureDevotionItems(CharacterMaster master, List<ItemEntry> devotionOut)
+        {
+            if (master == null || devotionOut == null) return;
+            var list = DevotionInstanceListField?.GetValue(null) as List<DevotionInventoryController>;
+            if (list == null) return;
+
+            for (int i = 0; i < list.Count; i++)
+            {
+                var ctrl = list[i];
+                if (ctrl == null || ctrl.SummonerMaster != master) continue;
+
+                if (DevotionInventoryField?.GetValue(ctrl) is Inventory devInv && devInv != null)
+                {
+                    CapturePermanentItemsOnly(devInv, devotionOut);
+                }
+                break;
+            }
+        }
+
+        private static void CapturePermanentItemsOnly(Inventory inventory, List<ItemEntry> itemsOut)
+        {
+            if (inventory == null || itemsOut == null) return;
+
+            var order = inventory.itemAcquisitionOrder;
+            if (order == null) return;
+
+            var seen = new HashSet<ItemIndex>();
+            for (int i = 0; i < order.Count; i++)
+            {
+                var idx = order[i];
+                if (idx == ItemIndex.None || !seen.Add(idx)) continue;
+
+                int count = inventory.GetItemCountPermanent(idx);
+                if (count <= 0) continue;
+
+                var def = ItemCatalog.GetItemDef(idx);
+                if (def == null || string.IsNullOrEmpty(def.name)) continue;
+
+                itemsOut.Add(new ItemEntry
+                {
+                    itemName = def.name,
+                    count = count
+                });
+            }
         }
 
         private static void CaptureInventory(Inventory inventory, List<ItemEntry> itemsOut, List<TempItemEntry> tempItemsOut, List<EquipmentEntry> equipOut)

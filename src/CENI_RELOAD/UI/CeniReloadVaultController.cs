@@ -40,11 +40,17 @@ namespace Jaosnake.CeniReload.UI
         private TextMeshProUGUI _footerHintText;
 
         private ScrollRect _scrollRect;
+        private Image _leftPanelImage;
+        private RectTransform _leftPanelRect;
+        private RectTransform _rightPanelRect;
         private Transform _cardsContainer;
         private Image _inspectorPortraitFrame;
+        private RawImage _inspectorLockBadge;
         private TextMeshProUGUI _inspectorTitle;
         private TextMeshProUGUI _inspectorBody;
         private TextMeshProUGUI _inspectorModStatus;
+        private GameObject _allLockedWarningBanner;
+        private TextMeshProUGUI _allLockedWarningText;
 
         private MPButton _loadButton;
         private TextMeshProUGUI _loadButtonLabel;
@@ -63,7 +69,9 @@ namespace Jaosnake.CeniReload.UI
             public int SlotNumber;
             public CheckpointSnapshot Snapshot;
             public MPButton Button;
+            public Image AccentStrip;
             public Image PortraitFrame;
+            public RawImage LockBadge;
             public VaultFocusHighlight Highlight;
         }
 
@@ -235,6 +243,16 @@ namespace Jaosnake.CeniReload.UI
                     }
                 }
 
+                // Gamepad Lock / Unlock toggle: X (Xbox) / Square (PlayStation) / Y-left (Switch)
+                if (_selectedSnapshot != null && _lastActionFrame != Time.frameCount &&
+                    (_deleteConfirmBar == null || !_deleteConfirmBar.activeSelf) &&
+                    IsGamepadLockButtonPressed(primaryEs))
+                {
+                    _lastActionFrame = Time.frameCount;
+                    ToggleLockOnSnapshot(_selectedSnapshot);
+                    return;
+                }
+
                 bool cancelPressed = Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.JoystickButton1);
                 if (!cancelPressed && primaryEs != null && primaryEs.player != null && primaryEs.player.GetButtonDown(15))
                 {
@@ -335,12 +353,154 @@ namespace Jaosnake.CeniReload.UI
             return activeEs != null && activeEs.currentInputSource == MPEventSystem.InputSource.Gamepad;
         }
 
+        private static string GetGamepadLockGlyph(MPEventSystem es)
+        {
+            if (es == null || es.currentInputSource != MPEventSystem.InputSource.Gamepad)
+                return string.Empty;
+
+            string hw = string.Empty;
+            var controllers = es.player?.controllers;
+            var lastCtrl = controllers?.GetLastActiveController();
+            if (lastCtrl != null && lastCtrl.type == Rewired.ControllerType.Joystick)
+            {
+                hw = $"{lastCtrl.name} {lastCtrl.hardwareName}".ToLowerInvariant();
+            }
+            else if (controllers != null && controllers.Joysticks != null && controllers.Joysticks.Count > 0)
+            {
+                var firstJoy = controllers.Joysticks[0];
+                if (firstJoy != null)
+                {
+                    hw = $"{firstJoy.name} {firstJoy.hardwareName}".ToLowerInvariant();
+                }
+            }
+
+            if (hw.Contains("dualsense") || hw.Contains("ps5"))
+                return "<sprite=\"tmpsprPS5GlyphsUnified\" name=\"texPS5GlyphsUnified_Square\"> ";
+            if (hw.Contains("dualshock") || hw.Contains("ps4") || hw.Contains("playstation") || hw.Contains("sony"))
+                return "<sprite=\"tmpsprPS4GlyphsUnified\" name=\"texPS4GlyphsUnified_3\"> ";
+            if (hw.Contains("switch") || hw.Contains("pro controller") || hw.Contains("joy-con"))
+                return "<sprite=\"tmpsprSwitchGlyphsUnified\" name=\"texSwitchGlyphsUnified_3\"> ";
+
+            // Verified from RoR2.Glyphs.RegisterXboxController: element ID 8 (X) => texXBoxOneGlyphs_7
+            return "<sprite=\"tmpsprXboxOneGlyphs\" name=\"texXBoxOneGlyphs_7\"> ";
+        }
+
         private void UpdateFooterHint(MPEventSystem es = null)
         {
             if (_footerHintText == null) return;
-            _footerHintText.text = IsGamepadActive(es)
-                ? CeniReloadStrings.Get("CENIRELOAD_UI_HINT_GAMEPAD")
-                : CeniReloadStrings.Get("CENIRELOAD_UI_HINT_KBM");
+            var activeEs = es ?? ResolveActiveEventSystem();
+            if (IsGamepadActive(activeEs))
+            {
+                string lockGlyph = GetGamepadLockGlyph(activeEs);
+                _footerHintText.text = CeniReloadStrings.Format("CENIRELOAD_UI_HINT_GAMEPAD", lockGlyph);
+            }
+            else
+            {
+                _footerHintText.text = CeniReloadStrings.Get("CENIRELOAD_UI_HINT_KBM");
+            }
+        }
+
+        private bool IsGamepadLockButtonPressed(MPEventSystem es)
+        {
+            MPEventSystem activeEs = es ?? ResolveActiveEventSystem();
+            if (activeEs != null && activeEs.player != null)
+            {
+                // RewiredConsts.Action.UISubmitAlt = 31 (X on Xbox / Square on PS)
+                if (activeEs.currentInputSource == MPEventSystem.InputSource.Gamepad &&
+                    activeEs.player.GetButtonDown(31))
+                {
+                    return true;
+                }
+
+                if (activeEs.player.controllers != null)
+                {
+                    var joysticks = activeEs.player.controllers.Joysticks;
+                    for (int i = 0; i < joysticks.Count; i++)
+                    {
+                        if (IsJoystickLeftFaceButtonJustPressed(joysticks[i])) return true;
+                    }
+                }
+            }
+
+            if (Rewired.ReInput.isReady && Rewired.ReInput.controllers != null)
+            {
+                var allJoys = Rewired.ReInput.controllers.Joysticks;
+                for (int i = 0; i < allJoys.Count; i++)
+                {
+                    if (IsJoystickLeftFaceButtonJustPressed(allJoys[i])) return true;
+                }
+            }
+
+            return Input.GetKeyDown(KeyCode.JoystickButton2);
+        }
+
+        private static bool IsJoystickLeftFaceButtonJustPressed(Rewired.Joystick joy)
+        {
+            if (joy == null) return false;
+
+            var templates = joy.Templates;
+            if (templates != null)
+            {
+                for (int t = 0; t < templates.Count; t++)
+                {
+                    var tpl = templates[t];
+                    if (tpl == null || tpl.elements == null) continue;
+                    var elements = tpl.elements;
+                    for (int e = 0; e < elements.Count; e++)
+                    {
+                        if (elements[e] is Rewired.IControllerTemplateButton tplBtn && tplBtn.exists && tplBtn.justPressed)
+                        {
+                            string desc = elements[e].descriptiveName ?? string.Empty;
+                            if (desc.IndexOf("Action Top Row 1", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                desc.IndexOf("Action Left", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                desc.IndexOf("Left Face", StringComparison.OrdinalIgnoreCase) >= 0)
+                            {
+                                return true;
+                            }
+                        }
+                    }
+                }
+            }
+
+            string hw = $"{joy.name} {joy.hardwareName}".ToLowerInvariant();
+            bool isSwitch = hw.Contains("switch") || hw.Contains("pro controller") || hw.Contains("joy-con");
+            if (isSwitch)
+            {
+                if (joy.GetButtonDownById(6)) return true;
+            }
+            else
+            {
+                // Verified from RoR2.Glyphs: Xbox X / PS4 Square / PS5 Square = element ID 8
+                if (joy.GetButtonDownById(8)) return true;
+            }
+
+            var buttons = joy.Buttons;
+            for (int b = 0; b < buttons.Count; b++)
+            {
+                var btn = buttons[b];
+                if (btn == null || !btn.justPressed) continue;
+
+                string elName = btn.elementIdentifier != null ? (btn.elementIdentifier.name ?? string.Empty) : string.Empty;
+                int elId = btn.elementIdentifier != null ? btn.elementIdentifier.id : -1;
+
+                if ((!isSwitch && elId == 8) ||
+                    (isSwitch && elId == 6) ||
+                    (!isSwitch && elName.Equals("X", StringComparison.OrdinalIgnoreCase)) ||
+                    (isSwitch && elName.Equals("Y", StringComparison.OrdinalIgnoreCase)) ||
+                    elName.Equals("Square", StringComparison.OrdinalIgnoreCase) ||
+                    elName.Equals("Action Top Row 1", StringComparison.OrdinalIgnoreCase) ||
+                    elName.Equals("Button X", StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+
+                if (b == 2 && IsGenericOrUnlabeledButton(elName))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private bool IsLobbyBlockedByOverlay()
@@ -1222,11 +1382,12 @@ namespace Jaosnake.CeniReload.UI
             closeRect.anchoredPosition = new Vector2(-20f, 0f);
 
             var leftPanel = UiFactory.CreatePanel("LeftSlotList", window.transform, UiFactory.SubPanelBgColor);
-            var leftRect = leftPanel.rectTransform;
-            leftRect.anchorMin = new Vector2(0f, 0f);
-            leftRect.anchorMax = new Vector2(0.54f, 1f);
-            leftRect.offsetMin = new Vector2(20f, 40f);
-            leftRect.offsetMax = new Vector2(-10f, -98f);
+            _leftPanelImage = leftPanel;
+            _leftPanelRect = leftPanel.rectTransform;
+            _leftPanelRect.anchorMin = new Vector2(0f, 0f);
+            _leftPanelRect.anchorMax = new Vector2(0.54f, 1f);
+            _leftPanelRect.offsetMin = new Vector2(20f, 40f);
+            _leftPanelRect.offsetMax = new Vector2(-10f, -98f);
 
             _scrollRect = leftPanel.gameObject.AddComponent<ScrollRect>();
             _scrollRect.horizontal = false;
@@ -1262,11 +1423,11 @@ namespace Jaosnake.CeniReload.UI
             _cardsContainer = content;
 
             var rightPanel = UiFactory.CreatePanel("RightInspector", window.transform, UiFactory.SubPanelBgColor);
-            var rightRect = rightPanel.rectTransform;
-            rightRect.anchorMin = new Vector2(0.54f, 0f);
-            rightRect.anchorMax = new Vector2(1f, 1f);
-            rightRect.offsetMin = new Vector2(10f, 40f);
-            rightRect.offsetMax = new Vector2(-20f, -98f);
+            _rightPanelRect = rightPanel.rectTransform;
+            _rightPanelRect.anchorMin = new Vector2(0.54f, 0f);
+            _rightPanelRect.anchorMax = new Vector2(1f, 1f);
+            _rightPanelRect.offsetMin = new Vector2(10f, 40f);
+            _rightPanelRect.offsetMax = new Vector2(-20f, -98f);
 
             _inspectorPortraitFrame = UiFactory.CreatePortraitFrame("InspectorPortrait", rightPanel.transform, null, UiFactory.AccentCyan);
             var inspPortRect = _inspectorPortraitFrame.rectTransform;
@@ -1275,6 +1436,14 @@ namespace Jaosnake.CeniReload.UI
             inspPortRect.pivot = new Vector2(0f, 1f);
             inspPortRect.sizeDelta = new Vector2(48f, 48f);
             inspPortRect.anchoredPosition = new Vector2(18f, -14f);
+
+            _inspectorLockBadge = UiFactory.CreatePadlockBadge("InspectorLockBadge", rightPanel.transform, 34f);
+            var inspLockRect = _inspectorLockBadge.rectTransform;
+            inspLockRect.anchorMin = new Vector2(1f, 1f);
+            inspLockRect.anchorMax = new Vector2(1f, 1f);
+            inspLockRect.pivot = new Vector2(1f, 1f);
+            inspLockRect.anchoredPosition = new Vector2(-16f, -20f);
+            _inspectorLockBadge.gameObject.SetActive(false);
 
             _inspectorTitle = UiFactory.CreateText("InspectorTitle", rightPanel.transform, "", 19f, UiFactory.AccentCyan, TextAlignmentOptions.MidlineLeft, FontStyles.Bold);
             _inspectorTitle.enableAutoSizing = true;
@@ -1389,6 +1558,30 @@ namespace Jaosnake.CeniReload.UI
 
             _deleteConfirmBar.SetActive(false);
 
+            var allLockedPanel = UiFactory.CreatePanel("AllLockedWarningBanner", window.transform, new Color(0.32f, 0.08f, 0.10f, 0.98f), UiFactory.AccentAmber);
+            var warnRect = allLockedPanel.rectTransform;
+            warnRect.anchorMin = new Vector2(0f, 0f);
+            warnRect.anchorMax = new Vector2(1f, 0f);
+            warnRect.pivot = new Vector2(0.5f, 0f);
+            warnRect.sizeDelta = new Vector2(-40f, 32f);
+            warnRect.anchoredPosition = new Vector2(0f, 34f);
+            _allLockedWarningBanner = allLockedPanel.gameObject;
+
+            _allLockedWarningText = UiFactory.CreateText(
+                "AllLockedWarningText",
+                allLockedPanel.transform,
+                "",
+                12.5f,
+                new Color(1.0f, 0.88f, 0.32f, 1f),
+                TextAlignmentOptions.Center,
+                FontStyles.Bold
+            );
+            _allLockedWarningText.enableAutoSizing = true;
+            _allLockedWarningText.fontSizeMin = 10f;
+            _allLockedWarningText.fontSizeMax = 13f;
+            UiFactory.StretchFull(_allLockedWarningText.rectTransform, 12f, 3f);
+            _allLockedWarningBanner.SetActive(false);
+
             var footerBar = UiFactory.CreatePanel("FooterHintBar", window.transform, new Color(0.04f, 0.06f, 0.11f, 0.96f));
             var footerRect = footerBar.rectTransform;
             footerRect.anchorMin = new Vector2(0f, 0f);
@@ -1405,6 +1598,26 @@ namespace Jaosnake.CeniReload.UI
                 TextAlignmentOptions.Center
             );
             UiFactory.StretchFull(_footerHintText.rectTransform, 16f, 2f);
+            SyncFooterSpriteAsset();
+        }
+
+        private void SyncFooterSpriteAsset()
+        {
+            if (_footerHintText == null) return;
+            TextMeshProUGUI sourceTmp = null;
+            if (_lobby != null && _lobby.readyButton != null)
+            {
+                sourceTmp = _lobby.readyButton.GetComponentInChildren<TextMeshProUGUI>(true);
+            }
+            else if (_mainMenu != null && _mainMenu.singlePlayerButton != null)
+            {
+                sourceTmp = _mainMenu.singlePlayerButton.GetComponentInChildren<TextMeshProUGUI>(true);
+            }
+            if (sourceTmp != null)
+            {
+                if (sourceTmp.font != null) _footerHintText.font = sourceTmp.font;
+                if (sourceTmp.spriteAsset != null) _footerHintText.spriteAsset = sourceTmp.spriteAsset;
+            }
         }
 
         private void SetModalOpen(bool open)
@@ -1473,6 +1686,7 @@ namespace Jaosnake.CeniReload.UI
         private void OnClickRequestDelete()
         {
             if (!CanHandleModalButtonClick()) return;
+            if (_selectedSnapshot == null || _selectedSnapshot.isLocked) return;
             SetDeleteConfirmVisible(true);
         }
 
@@ -1636,6 +1850,130 @@ namespace Jaosnake.CeniReload.UI
             WireModalNavigation();
         }
 
+        private void ToggleLockOnSnapshot(CheckpointSnapshot snapshot)
+        {
+            if (snapshot == null) return;
+            string profileKey = VaultRepository.GetCurrentProfileKey();
+            if (!VaultRepository.ToggleSlotLock(profileKey, snapshot.survivorBodyName, snapshot.slotIndex, out bool newLocked))
+            {
+                return;
+            }
+
+            snapshot.isLocked = newLocked;
+            if (IsSameSnapshot(_selectedSnapshot, snapshot))
+            {
+                _selectedSnapshot.isLocked = newLocked;
+            }
+
+            // Keep any matching SlotCardView snapshot synchronized
+            for (int i = 0; i < _cardViews.Count; i++)
+            {
+                var v = _cardViews[i];
+                if (v?.Snapshot != null && IsSameSnapshot(v.Snapshot, snapshot))
+                {
+                    v.Snapshot.isLocked = newLocked;
+                }
+            }
+
+            UpdateCardVisualsInPlace();
+            UpdateInspectorPanel();
+            WireModalNavigation();
+
+            // If user locked a slot while focus was sitting on Delete, shift focus cleanly to Load / Card
+            var activeEs = ResolveActiveEventSystem();
+            if (newLocked && activeEs != null && _deleteButton != null &&
+                activeEs.currentSelectedGameObject == _deleteButton.gameObject)
+            {
+                MPButton fallback = GetPrimaryActionButton() ?? GetSelectedOrFirstCardButton() ?? _closeButton;
+                if (fallback != null)
+                {
+                    ScheduleFocusNextFrame(fallback.gameObject);
+                }
+            }
+        }
+
+        private static Color GetCardBackgroundColor(CheckpointSnapshot snapshot, bool isSelected)
+        {
+            if (snapshot == null) return UiFactory.CardEmptyColor;
+            if (snapshot.IsMultiplayer())
+                return isSelected ? UiFactory.CardMultiplayerSelectedColor : UiFactory.CardMultiplayerBgColor;
+            if (snapshot.IsSpecialModeOrArtifact())
+                return isSelected ? UiFactory.CardSpecialModeSelectedColor : UiFactory.CardSpecialModeBgColor;
+            return isSelected ? UiFactory.CardSelectedColor : UiFactory.CardBgColor;
+        }
+
+        private static Color GetCardAccentColor(CheckpointSnapshot snapshot, bool missingSurvivor, bool modMismatch)
+        {
+            if (snapshot == null) return new Color(0.28f, 0.34f, 0.44f, 0.7f);
+            if (missingSurvivor) return UiFactory.AccentRed;
+            if (snapshot.isLocked) return UiFactory.AccentAmber;
+            if (snapshot.IsMultiplayer()) return UiFactory.AccentRed;
+            if (snapshot.IsSpecialModeOrArtifact()) return UiFactory.AccentGreen;
+            if (modMismatch) return UiFactory.AccentAmber;
+            return UiFactory.AccentCyan;
+        }
+
+        private void UpdateLeftPanelThemeColor()
+        {
+            if (_leftPanelImage == null) return;
+
+            bool isMpContext = false;
+            bool isSpecialContext = false;
+
+            if (_selectedSnapshot != null)
+            {
+                isMpContext = _selectedSnapshot.IsMultiplayer();
+                isSpecialContext = !isMpContext && _selectedSnapshot.IsSpecialModeOrArtifact();
+            }
+            else if (PreGameController.instance != null)
+            {
+                isMpContext = NetworkUser.readOnlyInstancesList != null && NetworkUser.readOnlyInstancesList.Count > 1;
+                string gm = GameModeCatalog.GetGameModeName(PreGameController.instance.gameModeIndex) ?? string.Empty;
+                if (!isMpContext && gm.IndexOf("InfiniteTower", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    isSpecialContext = true;
+                }
+            }
+
+            if (isMpContext)
+                _leftPanelImage.color = UiFactory.SubPanelMultiplayerBgColor;
+            else if (isSpecialContext)
+                _leftPanelImage.color = UiFactory.SubPanelSpecialModeBgColor;
+            else
+                _leftPanelImage.color = UiFactory.SubPanelBgColor;
+        }
+
+        private void UpdateAllLockedWarningBanner()
+        {
+            if (_allLockedWarningBanner == null || _allLockedWarningText == null) return;
+
+            string profileKey = VaultRepository.GetCurrentProfileKey();
+            string checkBody = _selectedSnapshot != null
+                ? _selectedSnapshot.survivorBodyName
+                : (!_showAllSurvivors ? GetSelectedSurvivorBodyName() : string.Empty);
+
+            bool allLocked = !string.IsNullOrEmpty(checkBody) && VaultRepository.AreAllSlotsLocked(profileKey, checkBody);
+            _allLockedWarningBanner.SetActive(allLocked);
+
+            if (allLocked)
+            {
+                string survName = _selectedSnapshot != null
+                    ? CeniReloadStrings.LocalizeGameToken(_selectedSnapshot.survivorDisplayToken, _selectedSnapshot.survivorBodyName)
+                    : GetSelectedSurvivorDisplayName();
+                _allLockedWarningText.text = CeniReloadStrings.Format("CENIRELOAD_UI_ALL_LOCKED_WARN", survName);
+            }
+
+            float bottomOffset = allLocked ? 72f : 40f;
+            if (_leftPanelRect != null)
+            {
+                _leftPanelRect.offsetMin = new Vector2(_leftPanelRect.offsetMin.x, bottomOffset);
+            }
+            if (_rightPanelRect != null)
+            {
+                _rightPanelRect.offsetMin = new Vector2(_rightPanelRect.offsetMin.x, bottomOffset);
+            }
+        }
+
         private void UpdateCardVisualsInPlace()
         {
             for (int i = 0; i < _cardViews.Count; i++)
@@ -1646,24 +1984,37 @@ namespace Jaosnake.CeniReload.UI
                 bool hasData = view.Snapshot != null;
                 bool isSelected = hasData && IsSameSnapshot(view.Snapshot, _selectedSnapshot);
                 bool missingSurvivor = hasData && view.Snapshot.HasMissingSurvivors();
+                bool modMismatch = hasData && view.Snapshot.HasModMismatch();
+                bool isLocked = hasData && view.Snapshot.isLocked;
 
-                Color bg = !hasData
-                    ? UiFactory.CardEmptyColor
-                    : (isSelected ? UiFactory.CardSelectedColor : UiFactory.CardBgColor);
+                Color bg = GetCardBackgroundColor(view.Snapshot, isSelected);
+                Color accent = GetCardAccentColor(view.Snapshot, missingSurvivor, modMismatch);
                 Color borderColor = isSelected
-                    ? (missingSurvivor ? UiFactory.AccentRed : UiFactory.AccentCyan)
-                    : (missingSurvivor ? new Color(0.88f, 0.28f, 0.32f, 0.50f) : new Color(1f, 1f, 1f, 0.12f));
+                    ? (missingSurvivor ? UiFactory.AccentRed : (isLocked ? UiFactory.AccentAmber : UiFactory.AccentCyan))
+                    : (missingSurvivor
+                        ? new Color(0.88f, 0.28f, 0.32f, 0.50f)
+                        : (isLocked ? new Color(0.98f, 0.78f, 0.22f, 0.65f) : new Color(1f, 1f, 1f, 0.12f)));
 
                 if (view.Highlight != null)
                 {
                     view.Highlight.SetBaseColors(bg, borderColor);
                 }
 
+                if (view.AccentStrip != null)
+                {
+                    view.AccentStrip.color = accent;
+                }
+
+                if (view.LockBadge != null)
+                {
+                    view.LockBadge.gameObject.SetActive(isLocked);
+                }
+
                 if (view.PortraitFrame != null && hasData)
                 {
                     Color portraitBorder = missingSurvivor
                         ? UiFactory.AccentRed
-                        : (isSelected ? UiFactory.AccentCyan : new Color(1f, 1f, 1f, 0.22f));
+                        : (isLocked ? UiFactory.AccentAmber : (isSelected ? UiFactory.AccentCyan : new Color(1f, 1f, 1f, 0.22f)));
                     var pOutline = view.PortraitFrame.GetComponent<Outline>();
                     if (pOutline != null)
                     {
@@ -1671,6 +2022,8 @@ namespace Jaosnake.CeniReload.UI
                     }
                 }
             }
+
+            UpdateLeftPanelThemeColor();
         }
 
         private MPButton GetPrimaryActionButton()
@@ -1839,15 +2192,15 @@ namespace Jaosnake.CeniReload.UI
             bool isSelected = hasData && IsSameSnapshot(snapshot, _selectedSnapshot);
             bool missingSurvivor = hasData && snapshot.HasMissingSurvivors();
             bool modMismatch = hasData && snapshot.HasModMismatch();
+            bool isLocked = hasData && snapshot.isLocked;
 
-            Color bg = !hasData ? UiFactory.CardEmptyColor : (isSelected ? UiFactory.CardSelectedColor : UiFactory.CardBgColor);
-            Color accent = !hasData
-                ? new Color(0.28f, 0.34f, 0.44f, 0.7f)
-                : (missingSurvivor ? UiFactory.AccentRed : (modMismatch ? UiFactory.AccentAmber : UiFactory.AccentCyan));
-
+            Color bg = GetCardBackgroundColor(snapshot, isSelected);
+            Color accent = GetCardAccentColor(snapshot, missingSurvivor, modMismatch);
             Color borderColor = isSelected
-                ? (missingSurvivor ? UiFactory.AccentRed : UiFactory.AccentCyan)
-                : (missingSurvivor ? new Color(0.88f, 0.28f, 0.32f, 0.50f) : new Color(1f, 1f, 1f, 0.12f));
+                ? (missingSurvivor ? UiFactory.AccentRed : (isLocked ? UiFactory.AccentAmber : UiFactory.AccentCyan))
+                : (missingSurvivor
+                    ? new Color(0.88f, 0.28f, 0.32f, 0.50f)
+                    : (isLocked ? new Color(0.98f, 0.78f, 0.22f, 0.65f) : new Color(1f, 1f, 1f, 0.12f)));
 
             var cardImg = UiFactory.CreatePanel($"CENIRELOAD_SlotCard_{slotNumber}", _cardsContainer, bg, borderColor);
             var cardOutline = cardImg.GetComponent<Outline>();
@@ -1886,6 +2239,17 @@ namespace Jaosnake.CeniReload.UI
                 SelectSnapshotInPlace(snapshot);
             });
 
+            if (hasData)
+            {
+                var rightClick = cardImg.gameObject.AddComponent<VaultRightClickHandler>();
+                rightClick.Initialize(() =>
+                {
+                    if (!CanHandleModalButtonClick()) return;
+                    SelectSnapshotInPlace(snapshot);
+                    ToggleLockOnSnapshot(snapshot);
+                });
+            }
+
             btn.onClick.AddListener(() =>
             {
                 if (!CanHandleModalButtonClick()) return;
@@ -1906,6 +2270,7 @@ namespace Jaosnake.CeniReload.UI
             autoScroll.Initialize(_scrollRect, cardImg.rectTransform);
 
             Image portraitFrame = null;
+            RawImage lockBadge = null;
             string slotHeader = CeniReloadStrings.Format("CENIRELOAD_UI_SLOT_LABEL", slotNumber);
             if (!hasData)
             {
@@ -1926,7 +2291,7 @@ namespace Jaosnake.CeniReload.UI
                 Texture portrait = PortraitCache.GetPortrait(snapshot.survivorBodyName);
                 Color portraitBorder = missingSurvivor
                     ? UiFactory.AccentRed
-                    : (isSelected ? UiFactory.AccentCyan : new Color(1f, 1f, 1f, 0.22f));
+                    : (isLocked ? UiFactory.AccentAmber : (isSelected ? UiFactory.AccentCyan : new Color(1f, 1f, 1f, 0.22f)));
 
                 portraitFrame = UiFactory.CreatePortraitFrame("Portrait", cardImg.transform, portrait, portraitBorder);
                 var portRect = portraitFrame.rectTransform;
@@ -1966,7 +2331,7 @@ namespace Jaosnake.CeniReload.UI
                 mid.rectTransform.anchorMin = new Vector2(0f, 0.30f);
                 mid.rectTransform.anchorMax = new Vector2(1f, 0.64f);
                 mid.rectTransform.offsetMin = new Vector2(80f, 0f);
-                mid.rectTransform.offsetMax = new Vector2(-12f, 0f);
+                mid.rectTransform.offsetMax = new Vector2(-46f, 0f);
 
                 var bot = UiFactory.CreateText("Bot", cardImg.transform, $"{snapshot.FormatRunTime()}  |  {diffName}  |  {snapshot.GetTotalItemCount()} {CeniReloadStrings.Get("CENIRELOAD_UI_ITEMS_SHORT")}", 12f, UiFactory.TextMuted, TextAlignmentOptions.Left);
                 bot.enableWordWrapping = false;
@@ -1974,7 +2339,16 @@ namespace Jaosnake.CeniReload.UI
                 bot.rectTransform.anchorMin = new Vector2(0f, 0f);
                 bot.rectTransform.anchorMax = new Vector2(1f, 0.32f);
                 bot.rectTransform.offsetMin = new Vector2(80f, 6f);
-                bot.rectTransform.offsetMax = new Vector2(-12f, 0f);
+                bot.rectTransform.offsetMax = new Vector2(-46f, 0f);
+
+                // Glowing RoR2 Character-Select-style 2D Padlock badge in bottom-right of card
+                lockBadge = UiFactory.CreatePadlockBadge("LockBadge", cardImg.transform, 30f);
+                var lockRect = lockBadge.rectTransform;
+                lockRect.anchorMin = new Vector2(1f, 0f);
+                lockRect.anchorMax = new Vector2(1f, 0f);
+                lockRect.pivot = new Vector2(1f, 0f);
+                lockRect.anchoredPosition = new Vector2(-10f, 8f);
+                lockBadge.gameObject.SetActive(isLocked);
             }
 
             _cardViews.Add(new SlotCardView
@@ -1982,7 +2356,9 @@ namespace Jaosnake.CeniReload.UI
                 SlotNumber = slotNumber,
                 Snapshot = snapshot,
                 Button = btn,
+                AccentStrip = strip,
                 PortraitFrame = portraitFrame,
+                LockBadge = lockBadge,
                 Highlight = highlight
             });
 
@@ -2000,19 +2376,28 @@ namespace Jaosnake.CeniReload.UI
                 {
                     _inspectorPortraitFrame.gameObject.SetActive(false);
                 }
+                if (_inspectorLockBadge != null)
+                {
+                    _inspectorLockBadge.gameObject.SetActive(false);
+                }
 
                 _inspectorTitle.rectTransform.offsetMin = new Vector2(18f, -62f);
+                _inspectorTitle.rectTransform.offsetMax = new Vector2(-18f, -14f);
                 _inspectorTitle.text = CeniReloadStrings.Get("CENIRELOAD_UI_SLOT_EMPTY");
                 _inspectorBody.text = CeniReloadStrings.Get("CENIRELOAD_UI_INSPECT_EMPTY");
                 _inspectorModStatus.text = string.Empty;
                 _loadButton.interactable = false;
                 _deleteButton.interactable = false;
+                _deleteButtonLabel.text = CeniReloadStrings.Get("CENIRELOAD_UI_BTN_DELETE");
+                UpdateAllLockedWarningBanner();
+                UpdateLeftPanelThemeColor();
                 WireModalNavigation();
                 return;
             }
 
             var s = _selectedSnapshot;
             bool missingSurvivor = s.HasMissingSurvivors();
+            bool isLocked = s.isLocked;
 
             if (_inspectorPortraitFrame != null)
             {
@@ -2021,10 +2406,16 @@ namespace Jaosnake.CeniReload.UI
                 UiFactory.UpdatePortraitFrame(
                     _inspectorPortraitFrame,
                     portrait,
-                    missingSurvivor ? UiFactory.AccentRed : UiFactory.AccentCyan
+                    missingSurvivor ? UiFactory.AccentRed : (isLocked ? UiFactory.AccentAmber : UiFactory.AccentCyan)
                 );
                 _inspectorTitle.rectTransform.offsetMin = new Vector2(76f, -62f);
             }
+
+            if (_inspectorLockBadge != null)
+            {
+                _inspectorLockBadge.gameObject.SetActive(isLocked);
+            }
+            _inspectorTitle.rectTransform.offsetMax = new Vector2(isLocked ? -58f : -18f, -14f);
 
             string survName = CeniReloadStrings.LocalizeGameToken(s.survivorDisplayToken, s.survivorBodyName);
             string stageName = CeniReloadStrings.LocalizeGameToken(s.stageDisplayToken, s.stageSceneName);
@@ -2034,11 +2425,15 @@ namespace Jaosnake.CeniReload.UI
             uint voidCoins = firstPlayer != null ? firstPlayer.voidCoins : 0;
             int tempItems = s.GetTotalTempItemCount();
             string tempSuffix = tempItems > 0 ? $" (+{tempItems} temp)" : string.Empty;
+            string waveLine = s.simulacrumWaveIndex > 0
+                ? $"<b>{CeniReloadStrings.Get("CENIRELOAD_UI_LABEL_WAVE")}:</b> {s.simulacrumWaveIndex}\n"
+                : string.Empty;
 
             _inspectorTitle.text = $"{CeniReloadStrings.Format("CENIRELOAD_UI_SLOT_LABEL", s.slotIndex)} — {survName}";
             _inspectorBody.text =
                 $"<b>{CeniReloadStrings.Get("CENIRELOAD_UI_LABEL_STAGE")}:</b> <color=#38bdf8>{stageName}</color>\n" +
                 $"<b>{CeniReloadStrings.Get("CENIRELOAD_UI_LABEL_STAGE_NUM")}:</b> {s.stageClearCount + 1}\n" +
+                waveLine +
                 $"<b>{CeniReloadStrings.Get("CENIRELOAD_UI_LABEL_LOOP")}:</b> {s.loopClearCount}\n" +
                 $"<b>{CeniReloadStrings.Get("CENIRELOAD_UI_LABEL_TIME")}:</b> {s.FormatRunTime()}\n" +
                 $"<b>{CeniReloadStrings.Get("CENIRELOAD_UI_LABEL_DIFFICULTY")}:</b> {diffName}\n" +
@@ -2055,7 +2450,19 @@ namespace Jaosnake.CeniReload.UI
                     s.GetFirstMissingSurvivorName()
                 );
                 _loadButton.interactable = false;
-                _deleteButton.interactable = true;
+                _deleteButton.interactable = !isLocked;
+            }
+            else if (isLocked)
+            {
+                bool mismatch = s.HasModMismatch();
+                _inspectorModStatus.fontStyle = FontStyles.Bold;
+                _inspectorModStatus.color = UiFactory.AccentAmber;
+                _inspectorModStatus.text = mismatch
+                    ? $"{CeniReloadStrings.Get("CENIRELOAD_UI_LOCK_PROTECTED")}\n{CeniReloadStrings.Get("CENIRELOAD_UI_MOD_MISMATCH")}"
+                    : CeniReloadStrings.Get("CENIRELOAD_UI_LOCK_PROTECTED");
+
+                _loadButton.interactable = true;
+                _deleteButton.interactable = false;
             }
             else
             {
@@ -2070,6 +2477,12 @@ namespace Jaosnake.CeniReload.UI
                 _deleteButton.interactable = true;
             }
 
+            _deleteButtonLabel.text = isLocked
+                ? CeniReloadStrings.Get("CENIRELOAD_UI_BTN_LOCKED")
+                : CeniReloadStrings.Get("CENIRELOAD_UI_BTN_DELETE");
+
+            UpdateAllLockedWarningBanner();
+            UpdateLeftPanelThemeColor();
             WireModalNavigation();
         }
 
@@ -2112,7 +2525,7 @@ namespace Jaosnake.CeniReload.UI
         private void OnConfirmDeleteSelected()
         {
             if (!CanHandleModalButtonClick()) return;
-            if (_selectedSnapshot == null) return;
+            if (_selectedSnapshot == null || _selectedSnapshot.isLocked) return;
             string profileKey = VaultRepository.GetCurrentProfileKey();
             VaultRepository.DeleteSlot(profileKey, _selectedSnapshot.survivorBodyName, _selectedSnapshot.slotIndex);
             _selectedSnapshot = null;

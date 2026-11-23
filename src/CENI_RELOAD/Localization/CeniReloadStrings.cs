@@ -25,12 +25,14 @@ namespace Jaosnake.CeniReload.Localization
             ["CENIRELOAD_UI_INSPECT_EMPTY"] = "Select a saved checkpoint card on the left to view full details.",
             ["CENIRELOAD_UI_BTN_LOAD"] = "LOAD CHECKPOINT",
             ["CENIRELOAD_UI_BTN_DELETE"] = "DELETE SLOT",
+            ["CENIRELOAD_UI_BTN_LOCKED"] = "SLOT LOCKED",
             ["CENIRELOAD_UI_CONFIRM_DELETE"] = "Confirm deletion?",
             ["CENIRELOAD_UI_BTN_CONFIRM_YES"] = "YES, DELETE",
             ["CENIRELOAD_UI_BTN_CONFIRM_NO"] = "CANCEL",
             ["CENIRELOAD_UI_LABEL_SURVIVOR"] = "Survivor",
             ["CENIRELOAD_UI_LABEL_STAGE"] = "Stage",
             ["CENIRELOAD_UI_LABEL_STAGE_NUM"] = "Stage #",
+            ["CENIRELOAD_UI_LABEL_WAVE"] = "Simulacrum Wave",
             ["CENIRELOAD_UI_LABEL_TIME"] = "Run Time",
             ["CENIRELOAD_UI_LABEL_DIFFICULTY"] = "Difficulty",
             ["CENIRELOAD_UI_LABEL_GOLD"] = "Gold / Void Coins",
@@ -38,7 +40,10 @@ namespace Jaosnake.CeniReload.Localization
             ["CENIRELOAD_UI_LABEL_SAVED_AT"] = "Saved At",
             ["CENIRELOAD_UI_MOD_MISMATCH"] = "Warning: Mod list changed since this checkpoint was saved.",
             ["CENIRELOAD_UI_MOD_OK"] = "Mod profile matches.",
+            ["CENIRELOAD_UI_LOCK_PROTECTED"] = "Protected: Locked against auto-save overwrite and deletion.",
+            ["CENIRELOAD_UI_ALL_LOCKED_WARN"] = "NO FREE SLOTS ({0}) — All 5 slots are locked! Unlock or delete a slot before continuing.",
             ["CENIRELOAD_CHAT_SAVED"] = "<color=#4de1ff><b>[CENI RELOAD]</b></color> Checkpoint saved to Slot {0} ({1} — Stage {2}).",
+            ["CENIRELOAD_CHAT_ALL_LOCKED"] = "<color=#facc15><b>[CENI RELOAD]</b></color> All 5 slots for {0} are locked! Unlock or delete a slot manually in the Vault before new checkpoints can be saved.",
             ["CENIRELOAD_CHAT_SAVE_ERROR"] = "<color=#ff5c5c><b>[CENI RELOAD]</b></color> Could not save checkpoint for Stage {0}.",
             ["CENIRELOAD_CHAT_LOADED"] = "<color=#4de1ff><b>[CENI RELOAD]</b></color> Checkpoint restored from Slot {0} ({1} — Stage {2}).",
             ["CENIRELOAD_UI_NO_SAVES"] = "No checkpoints found for this view.",
@@ -47,8 +52,8 @@ namespace Jaosnake.CeniReload.Localization
             ["CENIRELOAD_UI_LABEL_LOOP"] = "Loop",
             ["CENIRELOAD_UI_ITEMS_SHORT"] = "items",
             ["CENIRELOAD_UI_HINT_CLOSE"] = "ESC / B: Close",
-            ["CENIRELOAD_UI_HINT_KBM"] = "Click a slot to inspect  •  ESC: Close",
-            ["CENIRELOAD_UI_HINT_GAMEPAD"] = "D-Pad: Navigate  •  A: Select / Load  •  B: Close"
+            ["CENIRELOAD_UI_HINT_KBM"] = "Click: Inspect  •  Right-Click Card: Lock / Unlock  •  ESC: Close",
+            ["CENIRELOAD_UI_HINT_GAMEPAD"] = "D-Pad: Navigate  •  A: Select / Load  •  {0}Lock / Unlock  •  B: Close"
         };
 
         private static readonly Dictionary<string, string> PortugueseBr = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -67,12 +72,14 @@ namespace Jaosnake.CeniReload.Localization
             ["CENIRELOAD_UI_INSPECT_EMPTY"] = "Selecione um card salvo à esquerda para ver os detalhes.",
             ["CENIRELOAD_UI_BTN_LOAD"] = "CARREGAR CHECKPOINT",
             ["CENIRELOAD_UI_BTN_DELETE"] = "EXCLUIR SLOT",
+            ["CENIRELOAD_UI_BTN_LOCKED"] = "SLOT BLOQUEADO",
             ["CENIRELOAD_UI_CONFIRM_DELETE"] = "Confirmar exclusão?",
             ["CENIRELOAD_UI_BTN_CONFIRM_YES"] = "SIM, EXCLUIR",
             ["CENIRELOAD_UI_BTN_CONFIRM_NO"] = "CANCELAR",
             ["CENIRELOAD_UI_LABEL_SURVIVOR"] = "Sobrevivente",
             ["CENIRELOAD_UI_LABEL_STAGE"] = "Fase",
             ["CENIRELOAD_UI_LABEL_STAGE_NUM"] = "Nº da Fase",
+            ["CENIRELOAD_UI_LABEL_WAVE"] = "Onda do Simulacrum",
             ["CENIRELOAD_UI_LABEL_TIME"] = "Tempo",
             ["CENIRELOAD_UI_LABEL_DIFFICULTY"] = "Dificuldade",
             ["CENIRELOAD_UI_LABEL_GOLD"] = "Ouro / Moedas do Vazio",
@@ -80,7 +87,10 @@ namespace Jaosnake.CeniReload.Localization
             ["CENIRELOAD_UI_LABEL_SAVED_AT"] = "Salvo em",
             ["CENIRELOAD_UI_MOD_MISMATCH"] = "Aviso: A lista de mods mudou desde que este checkpoint foi salvo.",
             ["CENIRELOAD_UI_MOD_OK"] = "Perfil de mods compatível.",
+            ["CENIRELOAD_UI_LOCK_PROTECTED"] = "Protegido: Cadeado ativo contra sobrescrita e exclusão.",
+            ["CENIRELOAD_UI_ALL_LOCKED_WARN"] = "SEM ESPAÇO ({0}) — Todos os 5 slots estão bloqueados! Desbloqueie ou apague um slot antes de continuar.",
             ["CENIRELOAD_CHAT_SAVED"] = "<color=#4de1ff><b>[CENI RELOAD]</b></color> Checkpoint salvo no Slot {0} ({1} — Fase {2}).",
+            ["CENIRELOAD_CHAT_ALL_LOCKED"] = "<color=#facc15><b>[CENI RELOAD]</b></color> Todos os 5 slots de {0} estão bloqueados! Desbloqueie ou apague um slot manualmente no Cofre antes de continuar gravando.",
             ["CENIRELOAD_CHAT_SAVE_ERROR"] = "<color=#ff5c5c><b>[CENI RELOAD]</b></color> Não foi possível salvar o checkpoint da Fase {0}.",
             ["CENIRELOAD_CHAT_LOADED"] = "<color=#4de1ff><b>[CENI RELOAD]</b></color> Checkpoint restaurado do Slot {0} ({1} — Fase {2}).",
             ["CENIRELOAD_UI_NO_SAVES"] = "Nenhum checkpoint encontrado neste filtro.",
@@ -89,8 +99,8 @@ namespace Jaosnake.CeniReload.Localization
             ["CENIRELOAD_UI_LABEL_LOOP"] = "Loop",
             ["CENIRELOAD_UI_ITEMS_SHORT"] = "itens",
             ["CENIRELOAD_UI_HINT_CLOSE"] = "ESC / B: Fechar",
-            ["CENIRELOAD_UI_HINT_KBM"] = "Clique em um slot para inspecionar  •  ESC: Fechar",
-            ["CENIRELOAD_UI_HINT_GAMEPAD"] = "Direcional: Navegar  •  A: Selecionar / Carregar  •  B: Fechar"
+            ["CENIRELOAD_UI_HINT_KBM"] = "Clique: Inspecionar  •  Botão Direito no Card: Trancar / Destrancar  •  ESC: Fechar",
+            ["CENIRELOAD_UI_HINT_GAMEPAD"] = "Direcional: Navegar  •  A: Selecionar / Carregar  •  {0}Trancar / Destrancar  •  B: Fechar"
         };
 
         private static readonly Dictionary<string, Dictionary<string, string>> ExternalOverrides =

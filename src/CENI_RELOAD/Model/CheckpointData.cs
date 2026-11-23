@@ -12,6 +12,7 @@ namespace Jaosnake.CeniReload.Model
     {
         public int schemaVersion = 1;
         public int slotIndex;
+        public bool isLocked;
         public string savedUtcIso;
         public string profileKey;
 
@@ -34,6 +35,13 @@ namespace Jaosnake.CeniReload.Model
         public string ruleBookBase64;
         public ulong teamExperience;
         public List<string> eventFlags = new List<string>();
+
+        // Extra modes & artifacts (Simulacrum / Evolution)
+        public int simulacrumWaveIndex;
+        public int simulacrumEnemyItemPatternIndex;
+        public List<ItemEntry> simulacrumEnemyItems = new List<ItemEntry>();
+        public int evolutionItemIterator;
+        public List<ItemEntry> evolutionMonsterItems = new List<ItemEntry>();
 
         // Entities
         public List<PlayerSnapshot> players = new List<PlayerSnapshot>();
@@ -100,6 +108,38 @@ namespace Jaosnake.CeniReload.Model
             return total;
         }
 
+        public bool IsMultiplayer()
+        {
+            return players != null && players.Count > 1;
+        }
+
+        public bool IsSimulacrum()
+        {
+            return simulacrumWaveIndex > 0 ||
+                   (!string.IsNullOrEmpty(gameModeName) &&
+                    gameModeName.IndexOf("InfiniteTower", StringComparison.OrdinalIgnoreCase) >= 0);
+        }
+
+        public bool HasEvolutionOrDevotion()
+        {
+            if (evolutionMonsterItems != null && evolutionMonsterItems.Count > 0)
+                return true;
+            if (players != null)
+            {
+                for (int i = 0; i < players.Count; i++)
+                {
+                    if (players[i]?.devotionItems != null && players[i].devotionItems.Count > 0)
+                        return true;
+                }
+            }
+            return false;
+        }
+
+        public bool IsSpecialModeOrArtifact()
+        {
+            return IsSimulacrum() || HasEvolutionOrDevotion();
+        }
+
         public bool HasMissingSurvivors()
         {
             return !string.IsNullOrEmpty(GetFirstMissingSurvivorName());
@@ -164,6 +204,7 @@ namespace Jaosnake.CeniReload.Model
         public List<TempItemEntry> tempItems = new List<TempItemEntry>();
         public List<EquipmentEntry> equipments = new List<EquipmentEntry>();
         public List<MinionSnapshot> minions = new List<MinionSnapshot>();
+        public List<ItemEntry> devotionItems = new List<ItemEntry>();
     }
 
     [Serializable]

@@ -111,13 +111,38 @@ namespace Jaosnake.CeniReload.UI
         }
     }
 
+    internal class VaultRightClickHandler : MonoBehaviour, IPointerClickHandler
+    {
+        private Action _onRightClick;
+
+        public void Initialize(Action onRightClick)
+        {
+            _onRightClick = onRightClick;
+        }
+
+        public void OnPointerClick(PointerEventData eventData)
+        {
+            if (eventData != null && eventData.button == PointerEventData.InputButton.Right)
+            {
+                _onRightClick?.Invoke();
+            }
+        }
+    }
+
     internal static class UiFactory
     {
+        private static Texture2D _lockedPadlockTexture;
         public static readonly Color BackdropColor = new Color(0.02f, 0.04f, 0.08f, 0.82f);
         public static readonly Color PanelBgColor = new Color(0.06f, 0.09f, 0.15f, 0.98f);
         public static readonly Color SubPanelBgColor = new Color(0.09f, 0.13f, 0.21f, 0.96f);
+        public static readonly Color SubPanelMultiplayerBgColor = new Color(0.22f, 0.08f, 0.10f, 0.96f);
+        public static readonly Color SubPanelSpecialModeBgColor = new Color(0.07f, 0.20f, 0.13f, 0.96f);
         public static readonly Color CardBgColor = new Color(0.11f, 0.16f, 0.25f, 0.95f);
         public static readonly Color CardSelectedColor = new Color(0.14f, 0.27f, 0.38f, 1.0f);
+        public static readonly Color CardMultiplayerBgColor = new Color(0.28f, 0.10f, 0.13f, 0.95f);
+        public static readonly Color CardMultiplayerSelectedColor = new Color(0.42f, 0.14f, 0.18f, 1.0f);
+        public static readonly Color CardSpecialModeBgColor = new Color(0.09f, 0.24f, 0.15f, 0.95f);
+        public static readonly Color CardSpecialModeSelectedColor = new Color(0.13f, 0.36f, 0.22f, 1.0f);
         public static readonly Color CardEmptyColor = new Color(0.08f, 0.11f, 0.17f, 0.72f);
 
         public static readonly Color AccentCyan = new Color(0.22f, 0.78f, 0.98f, 1f);
@@ -263,6 +288,124 @@ namespace Jaosnake.CeniReload.UI
                 placeholder.gameObject.SetActive(!hasPortrait);
                 placeholder.color = borderColor == AccentRed ? AccentRed : TextMuted;
             }
+        }
+
+        public static Texture2D GetLockedPadlockTexture()
+        {
+            if (_lockedPadlockTexture != null) return _lockedPadlockTexture;
+
+            const int size = 64;
+            var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
+            tex.filterMode = FilterMode.Bilinear;
+            tex.wrapMode = TextureWrapMode.Clamp;
+
+            Color goldBright = new Color(1.00f, 0.87f, 0.28f, 1f);
+            Color goldMid = new Color(0.96f, 0.72f, 0.14f, 1f);
+            Color goldDeep = new Color(0.70f, 0.45f, 0.06f, 1f);
+            Color bgCenter = new Color(0.11f, 0.14f, 0.22f, 0.98f);
+            Color bgEdge = new Color(0.05f, 0.08f, 0.13f, 0.98f);
+            Color keyholeColor = new Color(0.08f, 0.09f, 0.14f, 1f);
+
+            float half = (size - 1) * 0.5f;
+
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    int edgeDist = Mathf.Min(Mathf.Min(x, size - 1 - x), Mathf.Min(y, size - 1 - y));
+                    float dx = x - half;
+                    float dy = y - half;
+                    float radial = Mathf.Clamp01(Mathf.Sqrt(dx * dx + dy * dy) / (half * 1.15f));
+
+                    // Character-Select portrait-style dark metallic base with subtle radial golden glow
+                    Color px = Color.Lerp(bgCenter, bgEdge, radial);
+                    float centerGlow = Mathf.Clamp01(1f - radial * 1.15f);
+                    px = Color.Lerp(px, new Color(0.36f, 0.26f, 0.07f, 1f), centerGlow * 0.42f);
+
+                    // Luminous golden portrait frame (matches RoR2 survivor selection glowing border)
+                    if (edgeDist <= 1)
+                    {
+                        px = new Color(1f, 0.88f, 0.32f, 0.96f);
+                    }
+                    else if (edgeDist == 2)
+                    {
+                        px = goldBright;
+                    }
+                    else if (edgeDist == 3)
+                    {
+                        px = Color.Lerp(goldMid, px, 0.35f);
+                    }
+                    else if (edgeDist <= 8)
+                    {
+                        float glowT = (8f - edgeDist) / 5f;
+                        px = Color.Lerp(px, goldMid, glowT * glowT * 0.36f);
+                    }
+
+                    // Padlock shackle (top U-arch)
+                    float sx = x - half;
+                    float sy = y - 36.5f;
+                    bool inShackle = false;
+                    if (y >= 36)
+                    {
+                        float r = Mathf.Sqrt(sx * sx + sy * sy);
+                        if (r >= 7.2f && r <= 12.2f) inShackle = true;
+                    }
+                    else if (y >= 28 && y < 36)
+                    {
+                        float absX = Mathf.Abs(sx);
+                        if (absX >= 7.2f && absX <= 12.2f) inShackle = true;
+                    }
+
+                    if (inShackle)
+                    {
+                        float shackleShade = Mathf.Clamp01((y - 28f) / 22f);
+                        px = Color.Lerp(new Color(0.84f, 0.86f, 0.92f, 1f), Color.white, shackleShade * 0.55f);
+                    }
+
+                    // Padlock body (beveled golden metallic rectangle, y = 12..32, x = 16..47)
+                    if (x >= 16 && x <= 47 && y >= 12 && y <= 32)
+                    {
+                        // Soft 2px rounded corners
+                        bool cutCorner =
+                            ((x == 16 || x == 47) && (y == 12 || y == 32));
+                        if (!cutCorner)
+                        {
+                            float bodyT = (y - 12f) / 20f;
+                            Color bodyCol = Color.Lerp(goldDeep, goldBright, bodyT);
+                            if (y == 32 || x == 16) bodyCol = Color.Lerp(bodyCol, Color.white, 0.35f);
+                            else if (y == 12 || x == 47) bodyCol = Color.Lerp(bodyCol, Color.black, 0.25f);
+                            px = bodyCol;
+
+                            // Keyhole circle + slot
+                            float kx = x - half;
+                            float ky = y - 24.0f;
+                            float kr = Mathf.Sqrt(kx * kx + ky * ky);
+                            bool inKeyhole = (kr <= 3.1f) || (Mathf.Abs(kx) <= 1.7f && y >= 16 && y <= 23);
+                            if (inKeyhole)
+                            {
+                                px = keyholeColor;
+                            }
+                        }
+                    }
+
+                    tex.SetPixel(x, y, px);
+                }
+            }
+
+            tex.Apply(false, true);
+            _lockedPadlockTexture = tex;
+            return _lockedPadlockTexture;
+        }
+
+        public static RawImage CreatePadlockBadge(string name, Transform parent, float size)
+        {
+            var rect = CreateRect(name, parent);
+            rect.sizeDelta = new Vector2(size, size);
+            var raw = rect.gameObject.AddComponent<RawImage>();
+            raw.texture = GetLockedPadlockTexture();
+            raw.color = Color.white;
+            raw.raycastTarget = false;
+            return raw;
         }
 
         public static void StretchFull(RectTransform rect, float padX = 0f, float padY = 0f)

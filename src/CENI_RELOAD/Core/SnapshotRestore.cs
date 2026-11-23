@@ -1,10 +1,12 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Reflection;
 using HarmonyLib;
 using Jaosnake.CeniReload.Localization;
 using Jaosnake.CeniReload.Model;
 using RoR2;
+using RoR2.Artifacts;
 using UnityEngine;
 using UnityEngine.Networking;
 
@@ -12,6 +14,12 @@ namespace Jaosnake.CeniReload.Core
 {
     public static class SnapshotRestore
     {
+        private static readonly FieldInfo SimulacrumPatternIdxField = AccessTools.Field(typeof(InfiniteTowerRun), "enemyItemPatternIndex");
+        private static readonly FieldInfo SimulacrumEnemyInvField = AccessTools.Field(typeof(InfiniteTowerRun), "enemyInventory");
+        private static readonly FieldInfo EvolutionInventoryField = AccessTools.Field(typeof(MonsterTeamGainsItemsArtifactManager), "monsterTeamInventory");
+        private static readonly FieldInfo EvolutionIteratorField = AccessTools.Field(typeof(MonsterTeamGainsItemsArtifactManager), "currentItemIterator");
+        private static readonly FieldInfo DevotionInstanceListField = AccessTools.Field(typeof(DevotionInventoryController), "InstanceList");
+        private static readonly FieldInfo DevotionInventoryField = AccessTools.Field(typeof(DevotionInventoryController), "_devotionMinionInventory");
         public static CheckpointSnapshot PendingSnapshot { get; private set; }
         public static bool IsRestoringRun => PendingSnapshot != null;
         public static bool AutoLaunchOnPreGame { get; private set; }
@@ -198,6 +206,15 @@ namespace Jaosnake.CeniReload.Core
                 {
                     run.nextStageScene = targetScene;
                 }
+
+                if (run is InfiniteTowerRun towerRun && snap.simulacrumWaveIndex > 0)
+                {
+                    towerRun.Network_waveIndex = snap.simulacrumWaveIndex;
+                    if (SimulacrumPatternIdxField != null)
+                    {
+                        SimulacrumPatternIdxField.SetValue(towerRun, snap.simulacrumEnemyItemPatternIndex);
+                    }
+                }
             }
             catch (Exception ex)
             {
@@ -270,6 +287,7 @@ namespace Jaosnake.CeniReload.Core
                 if (Run.instance != null)
                 {
                     Run.instance.SetRunStopwatch(snap.runFixedTime);
+                    RestoreExtraModeAndArtifactState(Run.instance, snap);
                 }
 
                 var players = PlayerCharacterMasterController.instances;
@@ -285,6 +303,11 @@ namespace Jaosnake.CeniReload.Core
                         pcmc.master.money = pSnap.money;
                         pcmc.master.voidCoins = pSnap.voidCoins;
                         pcmc.master.luck = pSnap.luck;
+
+                        if (pSnap.devotionItems != null && pSnap.devotionItems.Count > 0)
+                        {
+                            RestoreDevotionItems(pcmc.master, pSnap.devotionItems);
+                        }
 
                         if (pSnap.minions == null) continue;
 
@@ -338,6 +361,89 @@ namespace Jaosnake.CeniReload.Core
             finally
             {
                 ClearPending();
+            }
+        }
+
+        private static void RestoreExtraModeAndArtifactState(Run run, CheckpointSnapshot snap)
+        {
+            if (run is InfiniteTowerRun towerRun)
+            {
+                if (snap.simulacrumWaveIndex > 0)
+                {
+                    towerRun.Network_waveIndex = snap.simulacrumWaveIndex;
+                }
+                if (SimulacrumPatternIdxField != null && snap.simulacrumEnemyItemPatternIndex > 0)
+                {
+                    SimulacrumPatternIdxField.SetValue(towerRun, snap.simulacrumEnemyItemPatternIndex);
+                }
+                if (SimulacrumEnemyInvField?.GetValue(towerRun) is Inventory enemyInv && enemyInv != null &&
+                    snap.simulacrumEnemyItems != null && snap.simulacrumEnemyItems.Count > 0)
+                {
+                    ReplacePermanentInventory(enemyInv, snap.simulacrumEnemyItems);
+                }
+            }
+
+            if (snap.evolutionMonsterItems != null && snap.evolutionMonsterItems.Count > 0 &&
+                EvolutionInventoryField?.GetValue(null) is Inventory monsterInv && monsterInv != null)
+            {
+                ReplacePermanentInventory(monsterInv, snap.evolutionMonsterItems);
+                if (EvolutionIteratorField != null)
+                {
+                    EvolutionIteratorField.SetValue(null, snap.evolutionItemIterator);
+                }
+            }
+        }
+
+        private static void RestoreDevotionItems(CharacterMaster master, List<ItemEntry> devotionItems)
+        {
+            if (master == null || devotionItems == null || devotionItems.Count == 0) return;
+            var list = DevotionInstanceListField?.GetValue(null) as List<DevotionInventoryController>;
+            if (list == null) return;
+
+            for (int i = 0; i < list.Count; i++)
+            {
+                var ctrl = list[i];
+                if (ctrl == null || ctrl.SummonerMaster != master) continue;
+
+                if (DevotionInventoryField?.GetValue(ctrl) is Inventory devInv && devInv != null)
+                {
+                    ReplacePermanentInventory(devInv, devotionItems);
+                }
+                break;
+            }
+        }
+
+        private static void ReplacePermanentInventory(Inventory inventory, List<ItemEntry> targetItems)
+        {
+            if (inventory == null || targetItems == null) return;
+
+            var existingOrder = inventory.itemAcquisitionOrder;
+            if (existingOrder != null && existingOrder.Count > 0)
+            {
+                var snapshotExisting = new List<ItemIndex>(existingOrder);
+                for (int i = 0; i < snapshotExisting.Count; i++)
+                {
+                    var idx = snapshotExisting[i];
+                    if (idx == ItemIndex.None) continue;
+                    int cur = inventory.GetItemCountPermanent(idx);
+                    if (cur > 0)
+                    {
+                        inventory.RemoveItemPermanent(idx, cur);
+                    }
+                }
+            }
+
+            var seen = new HashSet<ItemIndex>();
+            for (int i = 0; i < targetItems.Count; i++)
+            {
+                var entry = targetItems[i];
+                if (entry == null || entry.count <= 0 || string.IsNullOrEmpty(entry.itemName)) continue;
+
+                var idx = ItemCatalog.FindItemIndex(entry.itemName);
+                if (idx == ItemIndex.None || ItemCatalog.GetItemDef(idx) == null) continue;
+                if (!seen.Add(idx)) continue;
+
+                inventory.GiveItemPermanent(idx, entry.count);
             }
         }
 

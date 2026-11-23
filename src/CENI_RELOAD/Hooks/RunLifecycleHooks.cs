@@ -98,13 +98,18 @@ namespace Jaosnake.CeniReload.Hooks
             var snapshot = SnapshotCapture.CaptureCurrentRun();
             if (snapshot == null) yield break;
 
-            bool saved = VaultRepository.SaveSnapshot(snapshot);
+            var saveResult = VaultRepository.SaveSnapshotWithStatus(snapshot);
             if (CeniReloadPlugin.ShowChatNotifications != null && CeniReloadPlugin.ShowChatNotifications.Value)
             {
                 string stageName = CeniReloadStrings.LocalizeGameToken(snapshot.stageDisplayToken, snapshot.stageSceneName);
-                if (saved)
+                if (saveResult == SaveSlotResult.Saved)
                 {
                     Chat.AddMessage(CeniReloadStrings.Format("CENIRELOAD_CHAT_SAVED", snapshot.slotIndex, stageName, snapshot.stageClearCount + 1));
+                }
+                else if (saveResult == SaveSlotResult.AllSlotsLocked)
+                {
+                    string survName = CeniReloadStrings.LocalizeGameToken(snapshot.survivorDisplayToken, snapshot.survivorBodyName);
+                    Chat.AddMessage(CeniReloadStrings.Format("CENIRELOAD_CHAT_ALL_LOCKED", survName));
                 }
                 else
                 {
