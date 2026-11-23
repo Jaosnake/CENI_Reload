@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using Jaosnake.CeniReload.Core;
 using Jaosnake.CeniReload.Localization;
@@ -80,6 +81,10 @@ namespace Jaosnake.CeniReload.UI
             {
                 _triggerLabel.text = CeniReloadStrings.Get("CENIRELOAD_BTN_OPEN_VAULT");
             }
+            if (isActiveAndEnabled && _triggerButton != null)
+            {
+                StartCoroutine(AlignTriggerAboveBackButton());
+            }
         }
 
         private string GetSelectedSurvivorBodyName()
@@ -116,20 +121,124 @@ namespace Jaosnake.CeniReload.UI
                 CeniReloadStrings.Get("CENIRELOAD_BTN_OPEN_VAULT"),
                 new Color(0.08f, 0.24f, 0.36f, 0.96f),
                 UiFactory.AccentCyan,
-                17f,
+                14f,
                 () => SetModalOpen(true),
                 out _triggerLabel
             );
 
+            if (_triggerLabel != null)
+            {
+                _triggerLabel.enableAutoSizing = true;
+                _triggerLabel.fontSizeMin = 10f;
+                _triggerLabel.fontSizeMax = 15f;
+                _triggerLabel.enableWordWrapping = false;
+            }
+
+            // Fallback default position until AlignTriggerAboveBackButton snaps to the Back/Voltar button
             var rect = _triggerButton.GetComponent<RectTransform>();
             rect.anchorMin = new Vector2(1f, 0f);
             rect.anchorMax = new Vector2(1f, 0f);
             rect.pivot = new Vector2(1f, 0f);
-            rect.sizeDelta = new Vector2(236f, 44f);
-            rect.anchoredPosition = new Vector2(-28f, 118f);
+            rect.sizeDelta = new Vector2(180f, 38f);
+            rect.anchoredPosition = new Vector2(-42f, 84f);
 
             var outline = _triggerButton.gameObject.GetComponent<Outline>();
             if (outline != null) outline.effectColor = UiFactory.AccentCyan;
+
+            StartCoroutine(AlignTriggerAboveBackButton());
+        }
+
+        private IEnumerator AlignTriggerAboveBackButton()
+        {
+            // Wait two frames for RoR2's lobby layout groups and CanvasScaler to settle
+            yield return null;
+            yield return null;
+
+            if (_triggerButton == null || _lobby == null) yield break;
+
+            var canvas = _lobby.GetComponentInParent<Canvas>();
+            if (canvas == null) yield break;
+            var rootCanvas = canvas.rootCanvas != null ? canvas.rootCanvas : canvas;
+
+            RectTransform backRect = FindBackButtonRect(rootCanvas.transform);
+            if (backRect == null) yield break;
+
+            var trigRect = _triggerButton.GetComponent<RectTransform>();
+            var canvasRect = rootCanvas.transform as RectTransform;
+            if (trigRect == null || canvasRect == null) yield break;
+
+            // Convert Back button's 4 world corners into the Canvas local space
+            Vector3[] corners = new Vector3[4];
+            backRect.GetWorldCorners(corners);
+            // corners: 0=bottom-left, 1=top-left, 2=top-right, 3=bottom-right
+            Vector3 bl = canvasRect.InverseTransformPoint(corners[0]);
+            Vector3 tl = canvasRect.InverseTransformPoint(corners[1]);
+            Vector3 tr = canvasRect.InverseTransformPoint(corners[2]);
+
+            float width = Mathf.Abs(tr.x - tl.x);
+            float height = Mathf.Abs(tl.y - bl.y);
+            if (width < 40f || height < 16f) yield break;
+
+            // Dock directly above Back/Voltar with identical width, height, and horizontal alignment
+            const float verticalGap = 4f;
+            trigRect.SetParent(canvasRect, false);
+            trigRect.anchorMin = new Vector2(0.5f, 0.5f);
+            trigRect.anchorMax = new Vector2(0.5f, 0.5f);
+            trigRect.pivot = new Vector2(0.5f, 0f);
+            trigRect.sizeDelta = new Vector2(width, height);
+            trigRect.localPosition = new Vector3((tl.x + tr.x) * 0.5f, tl.y + verticalGap, 0f);
+            trigRect.localScale = Vector3.one;
+            trigRect.localRotation = Quaternion.identity;
+        }
+
+        private RectTransform FindBackButtonRect(Transform root)
+        {
+            string localizedBack = RoR2.Language.GetString("BACK") ?? "Back";
+            var buttons = root.GetComponentsInChildren<Button>(true);
+            RectTransform bestFallback = null;
+            float bestScore = float.MinValue;
+
+            for (int i = 0; i < buttons.Length; i++)
+            {
+                var btn = buttons[i];
+                if (btn == null || btn == _triggerButton) continue;
+                if (!btn.gameObject.activeInHierarchy) continue;
+                if (btn.name.StartsWith("CENIRELOAD_", StringComparison.Ordinal)) continue;
+
+                var rt = btn.GetComponent<RectTransform>();
+                if (rt == null || rt.rect.width < 40f || rt.rect.height < 16f) continue;
+
+                // Priority 1: exact text match with localized "BACK" ("Voltar" / "Back") or GameObject name containing Back
+                var tmp = btn.GetComponentInChildren<TextMeshProUGUI>();
+                if (tmp != null && !string.IsNullOrEmpty(tmp.text))
+                {
+                    string txt = tmp.text.Trim();
+                    if (txt.Equals(localizedBack, StringComparison.OrdinalIgnoreCase) ||
+                        txt.Equals("Voltar", StringComparison.OrdinalIgnoreCase) ||
+                        txt.Equals("Back", StringComparison.OrdinalIgnoreCase) ||
+                        txt.Equals("Cancelar", StringComparison.OrdinalIgnoreCase) ||
+                        txt.Equals("Cancel", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return rt;
+                    }
+                }
+
+                if (btn.name.IndexOf("Back", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    return rt;
+                }
+
+                // Fallback: bottom-most, right-most active button
+                Vector3 pos = rt.position;
+                float score = pos.x - pos.y;
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    bestFallback = rt;
+                }
+            }
+
+            return bestFallback;
         }
 
         private void BuildVaultModal()
