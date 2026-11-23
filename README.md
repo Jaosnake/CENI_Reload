@@ -1,10 +1,10 @@
-# 🧤 CENI_RELOAD — Checkpoint Vault
+# 🧤 C.E.N.I RELOAD (`CENI_RELOAD`) — Checkpoint Vault
 
 > ✨ **100% Written From Scratch — Original Standalone Project**  
-> **CENI_RELOAD** is a completely original stage checkpoint vault for **Risk of Rain 2**, designed and built **100% from scratch** by **Jaosnake** under the **MIT License**.  
+> **C.E.N.I RELOAD** (**C**hrono-**E**nhanced **N**exus of **I**teration) is a completely original stage checkpoint vault for **Risk of Rain 2**, designed and built **100% from scratch** by **Jaosnake** under the **MIT License**.  
 > Zero third-party mod code • Standalone HarmonyX (`Jaosnake.CeniReload`) • Single dependency (`BepInExPack`) • Custom `.cenireload.json` format • Redesigned two-column Card Vault UI.
 
-[🇺🇸 English](#-english) • [🇧🇷 Português (Brasil)](#-português-brasil) • [⚽ Why the name CENI?](#-why-the-name-ceni)
+[🇺🇸 English](#-english) • [🇧🇷 Português (Brasil)](#-português-brasil) • [⚽ What does C.E.N.I mean?](#-what-does-ceni-mean)
 
 ---
 
@@ -12,12 +12,19 @@
 
 ### 🎯 Overview
 
-**CENI_RELOAD** automatically records a full run checkpoint at the start of every playable stage and adds a sleek **Checkpoint Vault** directly inside the Character Select lobby so you can browse, inspect, load, or clear your saved runs anytime.
+**C.E.N.I RELOAD** (`Jaosnake-CENI_RELOAD`) automatically records a full run checkpoint at the start of every playable stage and adds a sleek **Checkpoint Vault** directly inside the Character Select lobby so you can browse, inspect, load, or clear your saved runs anytime.
 
-### ⚽ Why the name CENI?
+### ⚽ What does C.E.N.I mean?
 
-The name **C.E.N.I** is a playful tribute to legendary Brazilian goalkeeper **Rogério Ceni**, iconic captain of **São Paulo FC** — famous for always **"saving"** his team with miraculous stops when it mattered most! 🧤🇧🇷  
-Just like Ceni saved São Paulo on the pitch, **CENI_RELOAD** saves your runs on Petrichor V! *(And yes, that's why the icon features the Brazilian flag cape and the golden trophy!)* 🏆
+**C.E.N.I** stands for:
+
+- **C** — **C**hrono
+- **E** — **E**nhanced
+- **N** — **N**exus of
+- **I** — **I**teration
+
+And it's also a clever mnemonic tribute to legendary Brazilian goalkeeper **Rogério Ceni**, iconic captain of **São Paulo FC** — famous for always **"saving"** his team with miraculous stops when it mattered most! 🧤🇧🇷  
+Just like Rogério Ceni saved São Paulo on the pitch, **C.E.N.I RELOAD** saves your runs on Petrichor V! *(That's why the icon features the Brazilian flag cape and the golden trophy!)* 🏆
 
 ### 🚀 Key Features
 
@@ -63,17 +70,24 @@ Just like Ceni saved São Paulo on the pitch, **CENI_RELOAD** saves your runs on
 ## 🇧🇷 Português (Brasil)
 
 > ✨ **Projeto 100% Feito do Zero — Código-Fonte Próprio e Independente**  
-> O **CENI_RELOAD** é um cofre de checkpoints de fase para **Risk of Rain 2** totalmente original, projetado e escrito **100% do zero** por **Jaosnake** sob a **Licença MIT**.  
+> O **C.E.N.I RELOAD** (**C**hrono-**E**nhanced **N**exus of **I**teration) é um cofre de checkpoints de fase para **Risk of Rain 2** totalmente original, projetado e escrito **100% do zero** por **Jaosnake** sob a **Licença MIT**.  
 > Zero código de terceiros • Arquitetura própria em HarmonyX (`Jaosnake.CeniReload`) • Dependência única (`BepInExPack`) • Formato próprio `.cenireload.json` • Interface própria em cards de duas colunas.
 
 ### 🎯 Visão Geral
 
-O **CENI_RELOAD** grava automaticamente o estado completo da sua partida no início de cada fase jogável e adiciona o **Cofre CENI RELOAD** direto na tela de Seleção de Personagem para você visualizar, inspecionar, carregar ou limpar seus checkpoints quando quiser.
+O **C.E.N.I RELOAD** (`Jaosnake-CENI_RELOAD`) grava automaticamente o estado completo da sua partida no início de cada fase jogável e adiciona o **Cofre CENI RELOAD** direto na tela de Seleção de Personagem para você visualizar, inspecionar, carregar ou limpar seus checkpoints quando quiser.
 
-### ⚽ Por que o nome CENI?
+### ⚽ O que significa C.E.N.I?
 
-O nome **C.E.N.I** é uma homenagem bem-humorada ao lendário goleiro brasileiro **Rogério Ceni**, eterno ídolo do **São Paulo FC** — famoso por sempre **"salvar"** o time nos momentos mais difíceis! 🧤🇧🇷  
-Assim como o Ceni salvava o São Paulo em campo, o **CENI_RELOAD** salva as suas runs em Petrichor V! *(E é por isso que o ícone traz a capa da bandeira do Brasil e a taça dourada!)* 🏆
+**C.E.N.I** é a sigla de:
+
+- **C** — **C**hrono
+- **E** — **E**nhanced
+- **N** — **N**exus of
+- **I** — **I**teration
+
+E também é um mnemônico em homenagem ao lendário goleiro brasileiro **Rogério Ceni**, eterno ídolo do **São Paulo FC** — famoso por sempre **"salvar"** o time nos momentos mais difíceis! 🧤🇧🇷  
+Assim como o Rogério Ceni salvava o São Paulo em campo, o **C.E.N.I RELOAD** salva as suas runs em Petrichor V! *(É por isso que o ícone traz a capa da bandeira do Brasil e a taça dourada!)* 🏆
 
 ### 🚀 Recursos Principais
 
