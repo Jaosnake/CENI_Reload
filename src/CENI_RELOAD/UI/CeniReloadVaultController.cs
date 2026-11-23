@@ -154,7 +154,7 @@ namespace Jaosnake.CeniReload.UI
 
         private void Update()
         {
-            var primaryEs = MPEventSystemManager.primaryEventSystem;
+            var primaryEs = ResolveActiveEventSystem();
 
             string currentLang = RoR2.Language.currentLanguageName;
             if (!string.Equals(currentLang, _lastLanguageName, StringComparison.Ordinal))
@@ -227,7 +227,7 @@ namespace Jaosnake.CeniReload.UI
             {
                 if (_isMainMenuMode)
                 {
-                    _triggerLabel.text = CeniReloadStrings.Get("CENIRELOAD_BTN_OPEN_VAULT");
+                    _triggerLabel.text = CeniReloadStrings.Get("CENIRELOAD_MAINMENU_LOAD");
                 }
                 else
                 {
@@ -277,49 +277,79 @@ namespace Jaosnake.CeniReload.UI
             if (hw.Contains("switch") || hw.Contains("pro controller") || hw.Contains("joy-con"))
                 return "<sprite=\"tmpsprSwitchGlyphsUnified\" name=\"texSwitchGlyphsUnified_2\"> ";
 
-            return "<sprite=\"tmpsprXboxOneGlyphs\" name=\"texXBoxOneGlyphs_3\"> ";
+            // Verified from RoR2.Glyphs.RegisterXboxController: element ID 9 (Y) => texXBoxOneGlyphs_11
+            return "<sprite=\"tmpsprXboxOneGlyphs\" name=\"texXBoxOneGlyphs_11\"> ";
         }
 
-        private static bool IsGamepadVaultShortcutPressed(MPEventSystem es)
+        private MPEventSystem ResolveActiveEventSystem()
         {
-            if (es == null || es.currentInputSource != MPEventSystem.InputSource.Gamepad)
+            if (_lobby != null)
+            {
+                var loc = _lobby.GetComponent<MPEventSystemLocator>();
+                if (loc != null && loc.eventSystem != null)
+                {
+                    return loc.eventSystem;
+                }
+            }
+            return MPEventSystemManager.primaryEventSystem ?? MPEventSystemManager.combinedEventSystem;
+        }
+
+        private bool IsGamepadVaultShortcutPressed(MPEventSystem es)
+        {
+            MPEventSystem activeEs = es ?? ResolveActiveEventSystem();
+            if (activeEs == null || activeEs.currentInputSource != MPEventSystem.InputSource.Gamepad)
                 return false;
 
-            if (es.player != null && es.player.controllers != null)
+            if (activeEs.player != null && activeEs.player.controllers != null)
             {
-                var joysticks = es.player.controllers.Joysticks;
+                var joysticks = activeEs.player.controllers.Joysticks;
                 for (int i = 0; i < joysticks.Count; i++)
                 {
-                    var joy = joysticks[i];
-                    if (joy == null) continue;
+                    if (IsJoystickTopFaceButtonJustPressed(joysticks[i])) return true;
+                }
+            }
 
-                    string hw = $"{joy.name} {joy.hardwareName}".ToLowerInvariant();
-                    bool isPlayStation = hw.Contains("dualshock") || hw.Contains("dualsense") ||
-                                         hw.Contains("playstation") || hw.Contains("ps4") ||
-                                         hw.Contains("ps5") || hw.Contains("sony");
-
-                    var buttons = joy.Buttons;
-                    for (int b = 0; b < buttons.Count; b++)
-                    {
-                        var btn = buttons[b];
-                        if (btn == null || !btn.justPressed) continue;
-
-                        string elName = btn.elementIdentifier != null ? btn.elementIdentifier.name : string.Empty;
-                        int elId = btn.elementIdentifier != null ? btn.elementIdentifier.id : -1;
-
-                        if (elName.Equals("Y", StringComparison.OrdinalIgnoreCase) ||
-                            elName.Equals("Triangle", StringComparison.OrdinalIgnoreCase) ||
-                            elName.Equals("Action Top Row 2", StringComparison.OrdinalIgnoreCase) ||
-                            (isPlayStation && elId == 9) ||
-                            (!isPlayStation && elId == 13))
-                        {
-                            return true;
-                        }
-                    }
+            if (Rewired.ReInput.isReady && Rewired.ReInput.controllers != null)
+            {
+                var allJoys = Rewired.ReInput.controllers.Joysticks;
+                for (int i = 0; i < allJoys.Count; i++)
+                {
+                    if (IsJoystickTopFaceButtonJustPressed(allJoys[i])) return true;
                 }
             }
 
             return Input.GetKeyDown(KeyCode.JoystickButton3);
+        }
+
+        private static bool IsJoystickTopFaceButtonJustPressed(Rewired.Joystick joy)
+        {
+            if (joy == null) return false;
+
+            // Universal Rewired Element ID 9 = Y (Xbox) / Triangle (PS4 & PS5) / Top Face Button (Switch)
+            if (joy.GetButtonDownById(9))
+            {
+                return true;
+            }
+
+            var buttons = joy.Buttons;
+            for (int b = 0; b < buttons.Count; b++)
+            {
+                var btn = buttons[b];
+                if (btn == null || !btn.justPressed) continue;
+
+                string elName = btn.elementIdentifier != null ? btn.elementIdentifier.name : string.Empty;
+                int elId = btn.elementIdentifier != null ? btn.elementIdentifier.id : -1;
+
+                if (elId == 9 ||
+                    elName.Equals("Y", StringComparison.OrdinalIgnoreCase) ||
+                    elName.Equals("Triangle", StringComparison.OrdinalIgnoreCase) ||
+                    elName.Equals("Action Top Row 2", StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private void ScheduleLobbyAlignment()
@@ -441,102 +471,145 @@ namespace Jaosnake.CeniReload.UI
         {
             if (_mainMenu == null) return;
 
-            Transform panelParent = null;
-            if (_mainMenu.mainMenuButtonPanel != null)
-            {
-                panelParent = _mainMenu.mainMenuButtonPanel.transform;
-            }
-            else if (_mainMenu.singlePlayerButton != null)
-            {
-                panelParent = _mainMenu.singlePlayerButton.transform.parent;
-            }
+            HGButton templateBtn = _mainMenu.singlePlayerButton;
+            Transform listParent = templateBtn != null ? templateBtn.transform.parent : null;
 
-            if (panelParent == null)
+            if (listParent == null && _mainMenu.mainMenuButtonPanel != null)
             {
-                panelParent = _mainMenu.transform;
+                var found = _mainMenu.mainMenuButtonPanel.GetComponentInChildren<HGButton>(true);
+                if (found != null)
+                {
+                    templateBtn = found;
+                    listParent = found.transform.parent;
+                }
             }
 
-            Transform existingBtn = panelParent.Find("CENIRELOAD_MainMenuVaultButton");
-            if (existingBtn != null)
+            if (listParent == null)
             {
-                existingBtn.gameObject.SetActive(false);
-                existingBtn.SetParent(null, false);
-                Destroy(existingBtn.gameObject);
+                listParent = _mainMenu.transform;
             }
 
-            UILayerKey mainMenuLayer = FindMainMenuLayerKey();
-
-            _triggerButton = UiFactory.CreateButton(
-                "CENIRELOAD_MainMenuVaultButton",
-                panelParent,
-                CeniReloadStrings.Get("CENIRELOAD_BTN_OPEN_VAULT"),
-                new Color(0.08f, 0.22f, 0.34f, 0.96f),
-                UiFactory.AccentCyan,
-                18f,
-                () => SetModalOpen(true),
-                out _triggerLabel,
-                mainMenuLayer
-            );
-
-            var outline = _triggerButton.gameObject.GetComponent<Outline>();
-            if (outline != null) outline.effectColor = UiFactory.AccentCyan;
-
-            var spButton = _mainMenu.singlePlayerButton;
-            var trigRect = _triggerButton.GetComponent<RectTransform>();
-            var layoutElem = _triggerButton.gameObject.AddComponent<LayoutElement>();
-
-            if (spButton != null)
+            // Clean up any pre-existing button before cloning
+            foreach (string oldName in new[] { "CENIRELOAD_MainMenuLoadButton", "CENIRELOAD_MainMenuVaultButton" })
             {
-                if (spButton.transform.parent == panelParent)
+                Transform existingBtn = listParent.Find(oldName);
+                if (existingBtn != null)
                 {
-                    _triggerButton.transform.SetSiblingIndex(spButton.transform.GetSiblingIndex() + 1);
+                    existingBtn.gameObject.SetActive(false);
+                    existingBtn.SetParent(null, false);
+                    Destroy(existingBtn.gameObject);
+                }
+            }
+
+            // Locate the Multiplayer button inside the same menu list so we insert right between Multiplayer and Alternate Game Modes
+            HGButton multiplayerBtn = null;
+            if (_mainMenu.onlineMultiplayerButtonTransition != null &&
+                _mainMenu.onlineMultiplayerButtonTransition.transform.parent == listParent)
+            {
+                multiplayerBtn = _mainMenu.onlineMultiplayerButtonTransition;
+            }
+            else
+            {
+                string localizedMulti = RoR2.Language.GetString("TITLE_MULTIPLAYER") ?? "Multiplayer";
+                for (int i = 0; i < listParent.childCount; i++)
+                {
+                    var child = listParent.GetChild(i);
+                    var hg = child.GetComponent<HGButton>();
+                    if (hg == null || hg == templateBtn) continue;
+
+                    var tmp = hg.GetComponentInChildren<TextMeshProUGUI>(true);
+                    string txt = tmp != null ? StripRichTextTags(tmp.text).Trim() : string.Empty;
+                    if (child.name.IndexOf("Multi", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                        txt.Equals(localizedMulti, StringComparison.OrdinalIgnoreCase) ||
+                        txt.Equals("Multiplayer", StringComparison.OrdinalIgnoreCase) ||
+                        txt.Equals("Multijogador", StringComparison.OrdinalIgnoreCase))
+                    {
+                        multiplayerBtn = hg;
+                        break;
+                    }
+                }
+            }
+
+            if (templateBtn != null)
+            {
+                // Clone native Main Menu button so font, sprite, hover highlight, sound, and layout are 100% identical
+                GameObject clone = Instantiate(templateBtn.gameObject, listParent, false);
+                clone.name = "CENIRELOAD_MainMenuLoadButton";
+                clone.SetActive(true);
+
+                // Remove any LanguageTextMeshController so RoR2 doesn't overwrite our localized label
+                var langControllers = clone.GetComponentsInChildren<LanguageTextMeshController>(true);
+                for (int i = 0; i < langControllers.Length; i++)
+                {
+                    DestroyImmediate(langControllers[i]);
                 }
 
-                var spLayout = spButton.GetComponent<LayoutElement>();
-                var spRect = spButton.GetComponent<RectTransform>();
-                if (spLayout != null)
+                // Hide any "NEW" notification badge if present
+                for (int i = clone.transform.childCount - 1; i >= 0; i--)
                 {
-                    layoutElem.minHeight = spLayout.minHeight;
-                    layoutElem.preferredHeight = spLayout.preferredHeight;
-                    layoutElem.flexibleHeight = spLayout.flexibleHeight;
-                    layoutElem.minWidth = spLayout.minWidth;
-                    layoutElem.preferredWidth = spLayout.preferredWidth;
-                    layoutElem.flexibleWidth = spLayout.flexibleWidth;
-                    layoutElem.ignoreLayout = spLayout.ignoreLayout;
-                }
-                else
-                {
-                    float refHeight = spRect != null && spRect.rect.height >= 24f ? spRect.rect.height : 46f;
-                    layoutElem.minHeight = refHeight;
-                    layoutElem.preferredHeight = refHeight;
-                    layoutElem.flexibleWidth = 1f;
+                    var c = clone.transform.GetChild(i);
+                    if (c.name.IndexOf("New", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                        c.name.IndexOf("Notification", StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        c.gameObject.SetActive(false);
+                    }
                 }
 
-                if (spRect != null && trigRect != null)
+                var hgBtn = clone.GetComponent<HGButton>();
+                _triggerButton = hgBtn;
+                _triggerLabel = clone.GetComponentInChildren<TextMeshProUGUI>(true);
+
+                if (_triggerLabel != null)
                 {
-                    trigRect.sizeDelta = spRect.sizeDelta.y >= 24f ? spRect.sizeDelta : new Vector2(300f, 46f);
+                    _triggerLabel.text = CeniReloadStrings.Get("CENIRELOAD_MAINMENU_LOAD");
                 }
 
-                var spLabel = spButton.GetComponentInChildren<TextMeshProUGUI>(true);
-                if (spLabel != null && _triggerLabel != null)
+                if (hgBtn != null)
                 {
-                    if (spLabel.font != null) _triggerLabel.font = spLabel.font;
-                    _triggerLabel.alignment = spLabel.alignment;
-                    _triggerLabel.fontSize = Mathf.Clamp(spLabel.fontSize, 14f, 22f);
-                    UiFactory.StretchFull(_triggerLabel.rectTransform, 16f, 4f);
+                    hgBtn.onClick = new Button.ButtonClickedEvent();
+                    hgBtn.onClick.AddListener(() => SetModalOpen(true));
+                    hgBtn.updateTextOnHover = false;
+                    hgBtn.hoverToken = string.Empty;
+
+                    var hoverTarget = hgBtn.hoverLanguageTextMeshController;
+                    if (hoverTarget != null)
+                    {
+                        var hoverTmp = hoverTarget.GetComponent<TextMeshProUGUI>();
+                        if (hoverTmp != null)
+                        {
+                            hgBtn.onSelect.AddListener(() =>
+                            {
+                                hoverTmp.text = CeniReloadStrings.Get("CENIRELOAD_MAINMENU_LOAD_DESC");
+                            });
+                            var trigger = clone.GetComponent<EventTrigger>() ?? clone.AddComponent<EventTrigger>();
+                            var entry = new EventTrigger.Entry { eventID = EventTriggerType.PointerEnter };
+                            entry.callback.AddListener(_ =>
+                            {
+                                hoverTmp.text = CeniReloadStrings.Get("CENIRELOAD_MAINMENU_LOAD_DESC");
+                            });
+                            trigger.triggers.Add(entry);
+                        }
+                    }
                 }
 
-                // Wire explicit gamepad navigation if Main Menu uses explicit mode
-                var spNav = spButton.navigation;
-                if (spNav.mode == Navigation.Mode.Explicit)
+                // Insert strictly between Multiplayer and Alternate Game Modes
+                int insertIndex = multiplayerBtn != null
+                    ? multiplayerBtn.transform.GetSiblingIndex() + 1
+                    : Math.Min(templateBtn.transform.GetSiblingIndex() + 2, listParent.childCount - 1);
+                clone.transform.SetSiblingIndex(insertIndex);
+
+                // Rewire explicit navigation if Main Menu uses Navigation.Mode.Explicit
+                Selectable anchorAbove = multiplayerBtn != null ? (Selectable)multiplayerBtn : templateBtn;
+                if (anchorAbove != null && _triggerButton != null && anchorAbove.navigation.mode == Navigation.Mode.Explicit)
                 {
-                    Selectable nextDown = spNav.selectOnDown;
-                    spNav.selectOnDown = _triggerButton;
-                    spButton.navigation = spNav;
+                    var aboveNav = anchorAbove.navigation;
+                    Selectable nextDown = aboveNav.selectOnDown;
+                    aboveNav.selectOnDown = _triggerButton;
+                    anchorAbove.navigation = aboveNav;
 
                     var trigNav = _triggerButton.navigation;
                     trigNav.mode = Navigation.Mode.Explicit;
-                    trigNav.selectOnUp = spButton;
+                    trigNav.selectOnUp = anchorAbove;
                     trigNav.selectOnDown = nextDown;
                     _triggerButton.navigation = trigNav;
 
@@ -553,21 +626,22 @@ namespace Jaosnake.CeniReload.UI
             }
             else
             {
+                UILayerKey mainMenuLayer = FindMainMenuLayerKey();
+                _triggerButton = UiFactory.CreateButton(
+                    "CENIRELOAD_MainMenuLoadButton",
+                    listParent,
+                    CeniReloadStrings.Get("CENIRELOAD_MAINMENU_LOAD"),
+                    new Color(0.16f, 0.20f, 0.26f, 0.94f),
+                    UiFactory.TextPrimary,
+                    18f,
+                    () => SetModalOpen(true),
+                    out _triggerLabel,
+                    mainMenuLayer
+                );
+                var layoutElem = _triggerButton.gameObject.AddComponent<LayoutElement>();
                 layoutElem.minHeight = 46f;
                 layoutElem.preferredHeight = 46f;
                 layoutElem.flexibleWidth = 1f;
-                if (trigRect != null)
-                {
-                    trigRect.sizeDelta = new Vector2(300f, 46f);
-                }
-            }
-
-            if (_triggerLabel != null)
-            {
-                _triggerLabel.enableAutoSizing = true;
-                _triggerLabel.fontSizeMin = 12f;
-                _triggerLabel.fontSizeMax = 22f;
-                _triggerLabel.enableWordWrapping = false;
             }
         }
 
@@ -582,8 +656,8 @@ namespace Jaosnake.CeniReload.UI
             trigRect.anchorMin = new Vector2(1f, 0f);
             trigRect.anchorMax = new Vector2(1f, 0f);
             trigRect.pivot = new Vector2(1f, 0f);
-            trigRect.sizeDelta = new Vector2(180f, 38f);
-            trigRect.anchoredPosition = new Vector2(-58f, 72f);
+            trigRect.sizeDelta = new Vector2(192f, 40f);
+            trigRect.anchoredPosition = new Vector2(-92f, 84f);
             trigRect.localScale = Vector3.one;
             trigRect.localRotation = Quaternion.identity;
         }
@@ -629,8 +703,19 @@ namespace Jaosnake.CeniReload.UI
             var canvasRect = rootCanvas.transform as RectTransform;
             if (trigRect == null || canvasRect == null) yield break;
 
+            // Sync TMP font/spriteAsset from lobby Ready button so Xbox/PS glyphs render crisp and full-color
+            if (_triggerLabel != null && _lobby.readyButton != null)
+            {
+                var readyTmp = _lobby.readyButton.GetComponentInChildren<TextMeshProUGUI>(true);
+                if (readyTmp != null)
+                {
+                    if (readyTmp.font != null) _triggerLabel.font = readyTmp.font;
+                    if (readyTmp.spriteAsset != null) _triggerLabel.spriteAsset = readyTmp.spriteAsset;
+                }
+            }
+
             RectTransform backRect = FindBackButtonRect(rootCanvas.transform, canvasRect);
-            if (backRect != null)
+            if (backRect != null && backRect.gameObject.activeInHierarchy)
             {
                 Vector3[] corners = new Vector3[4];
                 backRect.GetWorldCorners(corners);
@@ -641,14 +726,19 @@ namespace Jaosnake.CeniReload.UI
 
                 float width = Mathf.Abs(tr.x - tl.x);
                 float height = Mathf.Abs(tl.y - bl.y);
-                bool hasNonZeroExtent = width >= 40f && height >= 16f &&
-                                        (Mathf.Abs(tl.x) > 0.01f || Mathf.Abs(tl.y) > 0.01f || Mathf.Abs(tr.x) > 0.01f);
+                float centerX = (tl.x + tr.x) * 0.5f;
+                float topY = tl.y;
 
-                if (hasNonZeroExtent)
+                // Strictly verify the button is laid out in the bottom-right corner (never an un-laid-out inactive prefab center)
+                bool isValidBottomRight = width >= 110f && height >= 26f &&
+                                          centerX >= canvasRect.rect.width * 0.25f &&
+                                          topY <= -canvasRect.rect.height * 0.25f;
+
+                if (isValidBottomRight)
                 {
                     const float verticalGap = 4f;
                     Vector2 candidateSize = new Vector2(width, height);
-                    Vector3 candidatePos = new Vector3((tl.x + tr.x) * 0.5f, tl.y + verticalGap, 0f);
+                    Vector3 candidatePos = new Vector3(centerX, topY + verticalGap, 0f);
                     Rect candidateLocalRect = new Rect(
                         candidatePos.x - candidateSize.x * 0.5f,
                         candidatePos.y,

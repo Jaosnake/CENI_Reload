@@ -12,6 +12,8 @@ namespace Jaosnake.CeniReload.Localization
         private static readonly Dictionary<string, string> English = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             ["CENIRELOAD_BTN_OPEN_VAULT"] = "CENI RELOAD VAULT",
+            ["CENIRELOAD_MAINMENU_LOAD"] = "Load Game",
+            ["CENIRELOAD_MAINMENU_LOAD_DESC"] = "Open the CENI RELOAD Checkpoint Vault to load a saved run.",
             ["CENIRELOAD_UI_TITLE"] = "CENI RELOAD — CHECKPOINT VAULT",
             ["CENIRELOAD_UI_SUBTITLE"] = "Select a slot to inspect, load, or clear",
             ["CENIRELOAD_UI_FILTER_SURVIVOR"] = "Survivor: {0}",
@@ -50,6 +52,8 @@ namespace Jaosnake.CeniReload.Localization
         private static readonly Dictionary<string, string> PortugueseBr = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             ["CENIRELOAD_BTN_OPEN_VAULT"] = "COFRE CENI RELOAD",
+            ["CENIRELOAD_MAINMENU_LOAD"] = "Carregar Jogo",
+            ["CENIRELOAD_MAINMENU_LOAD_DESC"] = "Abra o Cofre CENI RELOAD para carregar uma partida salva.",
             ["CENIRELOAD_UI_TITLE"] = "CENI RELOAD — COFRE DE CHECKPOINTS",
             ["CENIRELOAD_UI_SUBTITLE"] = "Escolha um slot para inspecionar, carregar ou limpar",
             ["CENIRELOAD_UI_FILTER_SURVIVOR"] = "Sobrevivente: {0}",
