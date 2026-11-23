@@ -178,6 +178,10 @@ namespace Jaosnake.CeniReload.UI
             {
                 _modalLayerKey.enabled = false;
             }
+            if (CeniReloadPlugin.IsApplicationQuitting)
+            {
+                return;
+            }
             if (_modalRoot != null)
             {
                 Destroy(_modalRoot);
@@ -944,11 +948,16 @@ namespace Jaosnake.CeniReload.UI
                 clone.name = "CENIRELOAD_MainMenuLoadButton";
                 clone.SetActive(true);
 
-                // Remove any LanguageTextMeshController so RoR2 doesn't overwrite our localized label
+                // Remove any LanguageTextMeshController and ViewableTag so RoR2 doesn't overwrite our label or throw on shutdown
                 var langControllers = clone.GetComponentsInChildren<LanguageTextMeshController>(true);
                 for (int i = 0; i < langControllers.Length; i++)
                 {
                     DestroyImmediate(langControllers[i]);
+                }
+                var viewableTags = clone.GetComponentsInChildren<ViewableTag>(true);
+                for (int i = 0; i < viewableTags.Length; i++)
+                {
+                    DestroyImmediate(viewableTags[i]);
                 }
 
                 // Hide any "NEW" notification badge if present

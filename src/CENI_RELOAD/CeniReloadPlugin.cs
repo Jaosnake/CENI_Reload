@@ -21,6 +21,7 @@ namespace Jaosnake.CeniReload
         public static ConfigEntry<string> CloudStorageSubDirectory { get; private set; }
 
         private Harmony _harmony;
+        public static bool IsApplicationQuitting { get; private set; }
 
         private void Awake()
         {
@@ -63,9 +64,17 @@ namespace Jaosnake.CeniReload
             Log.LogInfo($"{PluginName} v{PluginVersion} initialized (100% original standalone architecture).");
         }
 
+        private void OnApplicationQuit()
+        {
+            IsApplicationQuitting = true;
+        }
+
         private void OnDestroy()
         {
-            _harmony?.UnpatchSelf();
+            if (!IsApplicationQuitting)
+            {
+                _harmony?.UnpatchSelf();
+            }
         }
     }
 }
