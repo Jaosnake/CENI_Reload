@@ -15,13 +15,27 @@ namespace Jaosnake.CeniReload.Core
         public static CheckpointSnapshot PendingSnapshot { get; private set; }
         public static bool IsRestoringRun => PendingSnapshot != null;
         public static bool AutoLaunchOnPreGame { get; private set; }
+        public static bool StageSceneApplied { get; private set; }
         private static int _restoredPlayerCursor;
 
         public static void ClearPending()
         {
             PendingSnapshot = null;
             AutoLaunchOnPreGame = false;
+            StageSceneApplied = false;
             _restoredPlayerCursor = 0;
+        }
+
+        public static bool TryOverrideInitialStageScene(Run run)
+        {
+            if (run == null || PendingSnapshot == null || StageSceneApplied) return false;
+            var targetScene = SceneCatalog.GetSceneDefFromSceneName(PendingSnapshot.stageSceneName);
+            if (targetScene == null) return false;
+
+            run.nextStageScene = targetScene;
+            StageSceneApplied = true;
+            CeniReloadPlugin.Log?.LogInfo($"Overriding initial run stage scene to '{targetScene.baseSceneName}' (Stage {PendingSnapshot.stageClearCount + 1}).");
+            return true;
         }
 
         public static bool BeginLoadFromLobby(CheckpointSnapshot snapshot)
@@ -44,6 +58,7 @@ namespace Jaosnake.CeniReload.Core
             {
                 PendingSnapshot = snapshot;
                 AutoLaunchOnPreGame = false;
+                StageSceneApplied = false;
                 _restoredPlayerCursor = 0;
 
                 ApplyPreGameSettings(preGame, snapshot);
@@ -80,6 +95,7 @@ namespace Jaosnake.CeniReload.Core
             {
                 PendingSnapshot = snapshot;
                 AutoLaunchOnPreGame = true;
+                StageSceneApplied = false;
                 _restoredPlayerCursor = 0;
 
                 string gm = "ClassicRun";
@@ -263,7 +279,14 @@ namespace Jaosnake.CeniReload.Core
                     {
                         var pcmc = players[i];
                         var pSnap = snap.players[i];
-                        if (pcmc == null || pcmc.master == null || pSnap == null || pSnap.minions == null) continue;
+                        if (pcmc == null || pcmc.master == null || pSnap == null) continue;
+
+                        // Re-apply currency & luck after stage entry so stage transition resets don't zero out saved gold
+                        pcmc.master.money = pSnap.money;
+                        pcmc.master.voidCoins = pSnap.voidCoins;
+                        pcmc.master.luck = pSnap.luck;
+
+                        if (pSnap.minions == null) continue;
 
                         var bodyObj = pcmc.master.GetBodyObject();
                         Vector3 basePos = bodyObj != null ? bodyObj.transform.position : Vector3.zero;

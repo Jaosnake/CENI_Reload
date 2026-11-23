@@ -32,6 +32,20 @@ namespace Jaosnake.CeniReload.Hooks
             }
         }
 
+        [HarmonyPrefix]
+        [HarmonyPatch(typeof(Run), "PickNextStageScene")]
+        private static bool OnPickNextStageScenePrefix(Run __instance)
+        {
+            if (NetworkServer.active && SnapshotRestore.IsRestoringRun && !SnapshotRestore.StageSceneApplied)
+            {
+                if (SnapshotRestore.TryOverrideInitialStageScene(__instance))
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
         [HarmonyPostfix]
         [HarmonyPatch(typeof(Run), "SetupUserCharacterMaster")]
         private static void OnSetupUserCharacterMasterPostfix(NetworkUser user)
