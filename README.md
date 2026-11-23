@@ -12,13 +12,11 @@
 
 ### 🎯 Overview
 
-**C.E.N.I RELOAD** (`Jaosnake-CENI_RELOAD`) automatically records a full run checkpoint at the start of every playable stage and adds a sleek **Checkpoint Vault** directly in both the **Main Menu** (`Load Game`) and the **Character Select lobby** so you can browse, inspect, load, or clear your saved runs anytime.
+**C.E.N.I RELOAD** (`Jaosnake-CENI_RELOAD`) automatically records a full run checkpoint at the start of every playable stage **from Stage 2 onward** (skipping Stage 1 so you can freely test survivors, mods, or artifacts) and adds a sleek **Checkpoint Vault** directly in both the **Main Menu** (`Load Game`) and the **Character Select lobby** so you can browse, inspect, load, or clear your saved runs anytime.
 
 ### 📸 Preview
 
 ![C.E.N.I RELOAD — Main Menu & Checkpoint Vault](https://raw.githubusercontent.com/Jaosnake/CENI_Reload/main/docs/screenshots/main-menu-vault-en.jpg)
-
-![C.E.N.I RELOAD — Lobby Gamepad Shortcut](https://raw.githubusercontent.com/Jaosnake/CENI_Reload/main/docs/screenshots/lobby-gamepad-shortcut.jpg)
 
 ### ⚽ What does C.E.N.I mean?
 
@@ -37,7 +35,7 @@ Just like Rogério Ceni saved São Paulo on the pitch, **C.E.N.I RELOAD** saves 
 | Feature | Description |
 | :--- | :--- |
 | 🛠️ **100% Original Architecture** | Built from the ground up in C# (`netstandard2.1`) under `Jaosnake.CeniReload` using HarmonyX only — single dependency (`bbepis-BepInExPack-5.4.2121`). |
-| 💾 **Automatic Stage Checkpoints** | Automatically captures a full snapshot at the start of every gameplay stage. |
+| 💾 **Automatic Stage Checkpoints** | Automatically captures a full snapshot at the start of every gameplay stage **from Stage 2 onward** (Stage 1 is intentionally skipped so testing builds/mods won't clutter your slots). |
 | 🗂️ **5 Rotating Slots per Survivor** | Stores up to **5 independent `.cenireload.json` slots** per survivor and profile, automatically rotating the oldest slot when full. |
 | 🃏 **Redesigned Two-Column Vault UI** | Open **CENI RELOAD VAULT** directly from the **Main Menu** or the **Character Select lobby** to browse visual slot cards with **survivor portraits** (*Current Survivor* / *All Survivors* filter), inspect detailed stats on the right, load checkpoints, or delete slots with inline confirmation. |
 | 🛡️ **Complete State Preservation** | Saves run seed, stage, **loop counters & event flags**, stopwatch, difficulty, artifacts/rules (`RuleBook`), team experience, survivor loadout, gold, void coins, permanent items and **DLC3 temporary items** (stored by **item name** for mod-order safety), equipment slots/sets, and owned drones/allies. |
@@ -59,7 +57,7 @@ Just like Rogério Ceni saved São Paulo on the pitch, **C.E.N.I RELOAD** saves 
 ### ⚙️ Configuration & Storage
 
 - **Config file**: `BepInEx/config/com.Jaosnake.CENI_RELOAD.cfg`
-  - `AutoSaveOnStageStart` *(default: `true`)* — Automatically saves a checkpoint at the start of every playable stage.
+  - `AutoSaveOnStageStart` *(default: `true`)* — Automatically saves a checkpoint at the start of every playable stage from Stage 2 onward.
   - `ShowChatMessages` *(default: `true`)* — Prints a chat notification when a checkpoint is saved or restored.
 - **Checkpoint Vault directory**:
   ```text
@@ -81,13 +79,11 @@ Just like Rogério Ceni saved São Paulo on the pitch, **C.E.N.I RELOAD** saves 
 
 ### 🎯 Visão Geral
 
-O **C.E.N.I RELOAD** (`Jaosnake-CENI_RELOAD`) grava automaticamente o estado completo da sua partida no início de cada fase jogável e adiciona o **Cofre CENI RELOAD** tanto no **Menu Principal** (`Carregar Jogo`) quanto na tela de **Seleção de Personagem** para você visualizar, inspecionar, carregar ou limpar seus checkpoints quando quiser.
+O **C.E.N.I RELOAD** (`Jaosnake-CENI_RELOAD`) grava automaticamente o estado completo da sua partida no início de cada fase jogável **a partir da Fase 2** (pulando a Fase 1 para você testar personagens, mods ou artefatos sem poluir os slots) e adiciona o **Cofre CENI RELOAD** tanto no **Menu Principal** (`Carregar Jogo`) quanto na tela de **Seleção de Personagem** para você visualizar, inspecionar, carregar ou limpar seus checkpoints quando quiser.
 
 ### 📸 Prévia
 
 ![C.E.N.I RELOAD — Menu Principal e Cofre de Checkpoints](https://raw.githubusercontent.com/Jaosnake/CENI_Reload/main/docs/screenshots/main-menu-vault-en.jpg)
-
-![C.E.N.I RELOAD — Atalho de Controle no Lobby](https://raw.githubusercontent.com/Jaosnake/CENI_Reload/main/docs/screenshots/lobby-gamepad-shortcut.jpg)
 
 ### ⚽ O que significa C.E.N.I?
 
@@ -106,7 +102,7 @@ Assim como o Rogério Ceni salvava o São Paulo em campo, o **C.E.N.I RELOAD** s
 | Recurso | Descrição |
 | :--- | :--- |
 | 🛠️ **Arquitetura 100% Autoral** | Escrito do zero em C# (`netstandard2.1`) em `Jaosnake.CeniReload` usando apenas HarmonyX — dependência única (`bbepis-BepInExPack-5.4.2121`). |
-| 💾 **Checkpoints Automáticos por Fase** | Registra automaticamente um snapshot completo no início de cada fase jogável. |
+| 💾 **Checkpoints Automáticos por Fase** | Registra automaticamente um snapshot completo no início de cada fase jogável **a partir da Fase 2** (a Fase 1 nunca é salva, evitando poluir seus slots ao testar mods, personagens ou artefatos). |
 | 🗂️ **5 Slots Rotativos por Sobrevivente** | Armazena até **5 slots independentes em `.cenireload.json`** por sobrevivente e perfil, substituindo automaticamente o slot mais antigo quando os cinco estiverem cheios. |
 | 🃏 **Interface de Cofre em Duas Colunas** | Abra o **COFRE CENI RELOAD** direto no **Menu Principal** ou no **lobby de Seleção de Personagem** para navegar pelos cards visuais com **retratos dos sobreviventes** (filtro *Sobrevivente Atual* / *Todos*), ver os detalhes completos no painel direito, carregar checkpoints ou excluir slots com confirmação integrada. |
 | 🛡️ **Preservação Completa da Partida** | Salva seed, fase, **contadores de loop e flags de evento**, cronômetro, dificuldade, artefatos/regras (`RuleBook`), experiência do time, loadout, ouro, moedas do vazio, itens permanentes e **itens temporários da DLC3** (salvos pelo **nome do item** para segurança entre mods), equipamentos e drones/aliados. |
@@ -128,7 +124,7 @@ Assim como o Rogério Ceni salvava o São Paulo em campo, o **C.E.N.I RELOAD** s
 ### ⚙️ Configuração e Armazenamento
 
 - **Arquivo de configuração**: `BepInEx/config/com.Jaosnake.CENI_RELOAD.cfg`
-  - `AutoSaveOnStageStart` *(padrão: `true`)* — Salva automaticamente um checkpoint no início de cada fase jogável.
+  - `AutoSaveOnStageStart` *(padrão: `true`)* — Salva automaticamente um checkpoint no início de cada fase jogável a partir da Fase 2.
   - `ShowChatMessages` *(padrão: `true`)* — Mostra um aviso no chat sempre que um checkpoint é salvo ou restaurado.
 - **Pasta do Cofre de Checkpoints**:
   ```text

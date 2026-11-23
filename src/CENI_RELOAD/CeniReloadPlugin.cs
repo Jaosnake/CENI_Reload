@@ -28,7 +28,7 @@ namespace Jaosnake.CeniReload
                 "Checkpoints",
                 "AutoSaveOnStageStart",
                 true,
-                "Automatically record a checkpoint at the start of every gameplay stage."
+                "Automatically record a checkpoint at the start of every gameplay stage from Stage 2 onward."
             );
 
             ShowChatNotifications = Config.Bind(
