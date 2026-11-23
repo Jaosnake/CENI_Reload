@@ -12,7 +12,13 @@
 
 ### 🎯 Overview
 
-**C.E.N.I RELOAD** (`Jaosnake-CENI_RELOAD`) automatically records a full run checkpoint at the start of every playable stage and adds a sleek **Checkpoint Vault** directly in both the **Main Menu** and the **Character Select lobby** so you can browse, inspect, load, or clear your saved runs anytime.
+**C.E.N.I RELOAD** (`Jaosnake-CENI_RELOAD`) automatically records a full run checkpoint at the start of every playable stage and adds a sleek **Checkpoint Vault** directly in both the **Main Menu** (`Load Game`) and the **Character Select lobby** so you can browse, inspect, load, or clear your saved runs anytime.
+
+### 📸 Preview
+
+![C.E.N.I RELOAD — Main Menu & Checkpoint Vault](https://raw.githubusercontent.com/Jaosnake/CENI_Reload/main/docs/screenshots/main-menu-vault-en.jpg)
+
+![C.E.N.I RELOAD — Lobby Gamepad Shortcut](https://raw.githubusercontent.com/Jaosnake/CENI_Reload/main/docs/screenshots/lobby-gamepad-shortcut.jpg)
 
 ### ⚽ What does C.E.N.I mean?
 
@@ -75,7 +81,13 @@ Just like Rogério Ceni saved São Paulo on the pitch, **C.E.N.I RELOAD** saves 
 
 ### 🎯 Visão Geral
 
-O **C.E.N.I RELOAD** (`Jaosnake-CENI_RELOAD`) grava automaticamente o estado completo da sua partida no início de cada fase jogável e adiciona o **Cofre CENI RELOAD** tanto no **Menu Principal** quanto na tela de **Seleção de Personagem** para você visualizar, inspecionar, carregar ou limpar seus checkpoints quando quiser.
+O **C.E.N.I RELOAD** (`Jaosnake-CENI_RELOAD`) grava automaticamente o estado completo da sua partida no início de cada fase jogável e adiciona o **Cofre CENI RELOAD** tanto no **Menu Principal** (`Carregar Jogo`) quanto na tela de **Seleção de Personagem** para você visualizar, inspecionar, carregar ou limpar seus checkpoints quando quiser.
+
+### 📸 Prévia
+
+![C.E.N.I RELOAD — Menu Principal e Cofre de Checkpoints](https://raw.githubusercontent.com/Jaosnake/CENI_Reload/main/docs/screenshots/main-menu-vault-en.jpg)
+
+![C.E.N.I RELOAD — Atalho de Controle no Lobby](https://raw.githubusercontent.com/Jaosnake/CENI_Reload/main/docs/screenshots/lobby-gamepad-shortcut.jpg)
 
 ### ⚽ O que significa C.E.N.I?
 

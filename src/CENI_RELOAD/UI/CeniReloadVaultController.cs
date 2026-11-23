@@ -657,7 +657,7 @@ namespace Jaosnake.CeniReload.UI
             trigRect.anchorMax = new Vector2(1f, 0f);
             trigRect.pivot = new Vector2(1f, 0f);
             trigRect.sizeDelta = new Vector2(192f, 40f);
-            trigRect.anchoredPosition = new Vector2(-92f, 84f);
+            trigRect.anchoredPosition = new Vector2(-92f, 88f);
             trigRect.localScale = Vector3.one;
             trigRect.localRotation = Quaternion.identity;
         }
@@ -712,6 +712,15 @@ namespace Jaosnake.CeniReload.UI
                     if (readyTmp.font != null) _triggerLabel.font = readyTmp.font;
                     if (readyTmp.spriteAsset != null) _triggerLabel.spriteAsset = readyTmp.spriteAsset;
                 }
+            }
+
+            // In Gamepad mode, RoR2 replaces Back/Voltar with the taller footer prompt bar ((B) Back / (LT)(RT) Change),
+            // so always dock cleanly above the footer divider instead of reusing the lower KBM Back-button Y coordinate.
+            var activeEs = ResolveActiveEventSystem();
+            if (activeEs != null && activeEs.currentInputSource == MPEventSystem.InputSource.Gamepad)
+            {
+                ApplyFallbackBottomRightDock(trigRect, canvasRect);
+                yield break;
             }
 
             RectTransform backRect = FindBackButtonRect(rootCanvas.transform, canvasRect);
