@@ -46,7 +46,9 @@ namespace Jaosnake.CeniReload.Localization
             ["CENIRELOAD_UI_MISSING_SURVIVOR_WARN"] = "Survivor '{0}' is not installed in this profile. Reinstall the mod to load this checkpoint.",
             ["CENIRELOAD_UI_LABEL_LOOP"] = "Loop",
             ["CENIRELOAD_UI_ITEMS_SHORT"] = "items",
-            ["CENIRELOAD_UI_HINT_CLOSE"] = "ESC / B: Close"
+            ["CENIRELOAD_UI_HINT_CLOSE"] = "ESC / B: Close",
+            ["CENIRELOAD_UI_HINT_KBM"] = "Click a slot to inspect  •  ESC: Close",
+            ["CENIRELOAD_UI_HINT_GAMEPAD"] = "D-Pad: Navigate  •  A: Select / Load  •  B: Close"
         };
 
         private static readonly Dictionary<string, string> PortugueseBr = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -86,7 +88,9 @@ namespace Jaosnake.CeniReload.Localization
             ["CENIRELOAD_UI_MISSING_SURVIVOR_WARN"] = "O sobrevivente '{0}' não está instalado neste perfil. Reinstale o mod para carregar este checkpoint.",
             ["CENIRELOAD_UI_LABEL_LOOP"] = "Loop",
             ["CENIRELOAD_UI_ITEMS_SHORT"] = "itens",
-            ["CENIRELOAD_UI_HINT_CLOSE"] = "ESC / B: Fechar"
+            ["CENIRELOAD_UI_HINT_CLOSE"] = "ESC / B: Fechar",
+            ["CENIRELOAD_UI_HINT_KBM"] = "Clique em um slot para inspecionar  •  ESC: Fechar",
+            ["CENIRELOAD_UI_HINT_GAMEPAD"] = "Direcional: Navegar  •  A: Selecionar / Carregar  •  B: Fechar"
         };
 
         private static readonly Dictionary<string, Dictionary<string, string>> ExternalOverrides =

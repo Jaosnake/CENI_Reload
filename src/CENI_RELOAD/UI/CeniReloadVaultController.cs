@@ -27,6 +27,7 @@ namespace Jaosnake.CeniReload.UI
         private TextMeshProUGUI _triggerLabel;
 
         private GameObject _modalRoot;
+        private MPEventSystemProvider _modalEventSystemProvider;
         private RoR2.UILayer _modalLayer;
         private UILayerKey _modalLayerKey;
 
@@ -57,9 +58,19 @@ namespace Jaosnake.CeniReload.UI
         private MPButton _confirmNoButton;
         private TextMeshProUGUI _confirmNoLabel;
 
+        private sealed class SlotCardView
+        {
+            public int SlotNumber;
+            public CheckpointSnapshot Snapshot;
+            public MPButton Button;
+            public Image PortraitFrame;
+            public VaultFocusHighlight Highlight;
+        }
+
         private bool _showAllSurvivors;
         private CheckpointSnapshot _selectedSnapshot;
         private readonly List<GameObject> _spawnedCards = new List<GameObject>();
+        private readonly List<SlotCardView> _cardViews = new List<SlotCardView>();
 
         private bool _hasCachedDock;
         private Vector2 _cachedDockSize;
@@ -69,6 +80,8 @@ namespace Jaosnake.CeniReload.UI
         private string _lastLanguageName;
         private int _openedFrame = -1;
         private int _closedFrame = -1;
+        private int _lastActionFrame = -1;
+        private bool _loggedLobbyGamepadInfo;
         private Coroutine _alignCoroutine;
         private Coroutine _focusCoroutine;
 
@@ -171,28 +184,38 @@ namespace Jaosnake.CeniReload.UI
                 }
             }
 
-            if (!_isMainMenuMode && _triggerButton != null)
+            if (primaryEs != null)
             {
-                if (primaryEs != null)
+                var currentSource = primaryEs.currentInputSource;
+                if (!_hasLastInputSource || currentSource != _lastInputSource)
                 {
-                    var currentSource = primaryEs.currentInputSource;
-                    if (!_hasLastInputSource || currentSource != _lastInputSource)
+                    _hasLastInputSource = true;
+                    _lastInputSource = currentSource;
+                    if (!_isMainMenuMode && _triggerButton != null)
                     {
-                        _hasLastInputSource = true;
-                        _lastInputSource = currentSource;
                         UpdateLobbyTriggerText(primaryEs);
                         ScheduleLobbyAlignment();
                     }
+                    UpdateFooterHint(primaryEs);
+                }
+            }
+
+            if (!_isMainMenuMode && _triggerButton != null)
+            {
+                if (!_loggedLobbyGamepadInfo && primaryEs != null && primaryEs.currentInputSource == MPEventSystem.InputSource.Gamepad)
+                {
+                    _loggedLobbyGamepadInfo = true;
+                    LogLobbyGamepadDiagnostics(primaryEs);
                 }
 
-                // Gamepad shortcut in Lobby: Y (Xbox) / Triangle (PlayStation) opens the Vault
+                // Gamepad shortcut in Lobby: Y (Xbox) / Triangle (PlayStation) / Top Face Button opens the Vault
                 if (_modalRoot != null && !_modalRoot.activeSelf &&
                     Time.frameCount > _openedFrame && Time.frameCount > _closedFrame &&
                     _triggerButton.gameObject.activeInHierarchy && IsGamepadVaultShortcutPressed(primaryEs))
                 {
-                    var lobbyLayer = _triggerButton.requiredTopLayer;
-                    if (lobbyLayer == null || lobbyLayer.representsTopLayer)
+                    if (!IsLobbyBlockedByOverlay())
                     {
+                        CeniReloadPlugin.Log?.LogInfo("Opening Checkpoint Vault via Lobby gamepad shortcut.");
                         SetModalOpen(true);
                         return;
                     }
@@ -201,14 +224,26 @@ namespace Jaosnake.CeniReload.UI
 
             if (_modalRoot != null && _modalRoot.activeSelf && Time.frameCount > _openedFrame)
             {
+                // Keep gamepad focus trapped inside the Vault modal so D-pad/stick can never vanish off-screen
+                if (primaryEs != null && primaryEs.currentInputSource == MPEventSystem.InputSource.Gamepad &&
+                    (_modalLayerKey == null || _modalLayerKey.representsTopLayer))
+                {
+                    GameObject selected = primaryEs.currentSelectedGameObject;
+                    if (selected == null || !selected.activeInHierarchy || !selected.transform.IsChildOf(_modalRoot.transform))
+                    {
+                        FocusDefaultModalControl();
+                    }
+                }
+
                 bool cancelPressed = Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.JoystickButton1);
                 if (!cancelPressed && primaryEs != null && primaryEs.player != null && primaryEs.player.GetButtonDown(15))
                 {
                     cancelPressed = true;
                 }
 
-                if (cancelPressed)
+                if (cancelPressed && _lastActionFrame != Time.frameCount)
                 {
+                    _lastActionFrame = Time.frameCount;
                     if (_deleteConfirmBar != null && _deleteConfirmBar.activeSelf)
                     {
                         SetDeleteConfirmVisible(false);
@@ -294,18 +329,94 @@ namespace Jaosnake.CeniReload.UI
             return MPEventSystemManager.primaryEventSystem ?? MPEventSystemManager.combinedEventSystem;
         }
 
+        private bool IsGamepadActive(MPEventSystem es = null)
+        {
+            var activeEs = es ?? ResolveActiveEventSystem();
+            return activeEs != null && activeEs.currentInputSource == MPEventSystem.InputSource.Gamepad;
+        }
+
+        private void UpdateFooterHint(MPEventSystem es = null)
+        {
+            if (_footerHintText == null) return;
+            _footerHintText.text = IsGamepadActive(es)
+                ? CeniReloadStrings.Get("CENIRELOAD_UI_HINT_GAMEPAD")
+                : CeniReloadStrings.Get("CENIRELOAD_UI_HINT_KBM");
+        }
+
+        private bool IsLobbyBlockedByOverlay()
+        {
+            if (PauseScreenController.instancesList != null && PauseScreenController.instancesList.Count > 0)
+                return true;
+            if (SimpleDialogBox.instancesList != null && SimpleDialogBox.instancesList.Count > 0)
+                return true;
+
+            UILayerKey lobbyLayer = _triggerButton != null ? _triggerButton.requiredTopLayer : null;
+            if (lobbyLayer != null && lobbyLayer.isActiveAndEnabled && !lobbyLayer.representsTopLayer)
+            {
+                return true;
+            }
+            return false;
+        }
+
+        private void LogLobbyGamepadDiagnostics(MPEventSystem es)
+        {
+            try
+            {
+                string joyInfo = "none";
+                if (es != null && es.player != null && es.player.controllers != null && es.player.controllers.Joysticks.Count > 0)
+                {
+                    var j = es.player.controllers.Joysticks[0];
+                    if (j != null)
+                    {
+                        joyInfo = $"'{j.name}' (hw='{j.hardwareName}', buttons={j.buttonCount}, templates={j.templateCount})";
+                    }
+                }
+                else if (Rewired.ReInput.isReady && Rewired.ReInput.controllers != null && Rewired.ReInput.controllers.Joysticks.Count > 0)
+                {
+                    var j = Rewired.ReInput.controllers.Joysticks[0];
+                    if (j != null)
+                    {
+                        joyInfo = $"global '{j.name}' (hw='{j.hardwareName}', buttons={j.buttonCount}, templates={j.templateCount})";
+                    }
+                }
+
+                UILayerKey lobbyLayer = _triggerButton != null ? _triggerButton.requiredTopLayer : null;
+                string layerInfo = lobbyLayer != null
+                    ? $"{lobbyLayer.name} (active={lobbyLayer.isActiveAndEnabled}, top={lobbyLayer.representsTopLayer})"
+                    : "null";
+                CeniReloadPlugin.Log?.LogInfo($"Lobby gamepad ready: joystick={joyInfo}, lobbyLayer={layerInfo}");
+            }
+            catch
+            {
+                // Ignore non-critical diagnostics failures
+            }
+        }
+
         private bool IsGamepadVaultShortcutPressed(MPEventSystem es)
         {
             MPEventSystem activeEs = es ?? ResolveActiveEventSystem();
-            if (activeEs == null || activeEs.currentInputSource != MPEventSystem.InputSource.Gamepad)
-                return false;
 
-            if (activeEs.player != null && activeEs.player.controllers != null)
+            if (activeEs != null && activeEs.player != null && activeEs.player.controllers != null)
             {
                 var joysticks = activeEs.player.controllers.Joysticks;
                 for (int i = 0; i < joysticks.Count; i++)
                 {
                     if (IsJoystickTopFaceButtonJustPressed(joysticks[i])) return true;
+                }
+            }
+
+            var allEventSystems = MPEventSystem.readOnlyInstancesList;
+            if (allEventSystems != null)
+            {
+                for (int e = 0; e < allEventSystems.Count; e++)
+                {
+                    var mpEs = allEventSystems[e];
+                    if (mpEs == null || mpEs == activeEs || mpEs.player == null || mpEs.player.controllers == null) continue;
+                    var joysticks = mpEs.player.controllers.Joysticks;
+                    for (int i = 0; i < joysticks.Count; i++)
+                    {
+                        if (IsJoystickTopFaceButtonJustPressed(joysticks[i])) return true;
+                    }
                 }
             }
 
@@ -325,28 +436,103 @@ namespace Jaosnake.CeniReload.UI
         {
             if (joy == null) return false;
 
-            // Universal Rewired Element ID 9 = Y (Xbox) / Triangle (PS4 & PS5) / Top Face Button (Switch)
-            if (joy.GetButtonDownById(9))
+            // 1. Universal Rewired Controller Templates (GamepadTemplate -> Action Top Row 2 = Y / Triangle / Switch X)
+            var templates = joy.Templates;
+            if (templates != null)
             {
-                return true;
+                for (int t = 0; t < templates.Count; t++)
+                {
+                    var tpl = templates[t];
+                    if (tpl == null || tpl.elements == null) continue;
+                    var elements = tpl.elements;
+                    for (int e = 0; e < elements.Count; e++)
+                    {
+                        if (elements[e] is Rewired.IControllerTemplateButton tplBtn && tplBtn.exists && tplBtn.justPressed)
+                        {
+                            string desc = elements[e].descriptiveName ?? string.Empty;
+                            if (desc.IndexOf("Action Top Row 2", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                desc.IndexOf("Top Face", StringComparison.OrdinalIgnoreCase) >= 0)
+                            {
+                                return true;
+                            }
+                        }
+                    }
+                }
             }
 
+            // 2. Verified RoR2 hardware element IDs: Switch/Pro uses ID 7; Xbox/PS4/PS5/Stadia use ID 9
+            string hw = $"{joy.name} {joy.hardwareName}".ToLowerInvariant();
+            bool isSwitch = hw.Contains("switch") || hw.Contains("pro controller") || hw.Contains("joy-con");
+            if (isSwitch)
+            {
+                if (joy.GetButtonDownById(7)) return true;
+            }
+            else
+            {
+                if (joy.GetButtonDownById(9)) return true;
+            }
+
+            // 3. Element name scan + safe generic button index 3 fallback (for DirectInput / 8BitDo / Steam Input virtual gamepads)
             var buttons = joy.Buttons;
             for (int b = 0; b < buttons.Count; b++)
             {
                 var btn = buttons[b];
                 if (btn == null || !btn.justPressed) continue;
 
-                string elName = btn.elementIdentifier != null ? btn.elementIdentifier.name : string.Empty;
+                string elName = btn.elementIdentifier != null ? (btn.elementIdentifier.name ?? string.Empty) : string.Empty;
                 int elId = btn.elementIdentifier != null ? btn.elementIdentifier.id : -1;
 
-                if (elId == 9 ||
+                if ((!isSwitch && elId == 9) ||
+                    (isSwitch && elId == 7) ||
                     elName.Equals("Y", StringComparison.OrdinalIgnoreCase) ||
                     elName.Equals("Triangle", StringComparison.OrdinalIgnoreCase) ||
-                    elName.Equals("Action Top Row 2", StringComparison.OrdinalIgnoreCase))
+                    elName.Equals("Action Top Row 2", StringComparison.OrdinalIgnoreCase) ||
+                    elName.Equals("Button Y", StringComparison.OrdinalIgnoreCase) ||
+                    elName.Equals("Face Button Top", StringComparison.OrdinalIgnoreCase))
                 {
                     return true;
                 }
+
+                if (b == 3 && IsGenericOrUnlabeledButton(elName))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool IsGenericOrUnlabeledButton(string elName)
+        {
+            if (string.IsNullOrWhiteSpace(elName)) return true;
+            string n = elName.Trim();
+            if (n.StartsWith("Button ", StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            // Reject any explicitly named non-top-face button so we never misfire on A/B/X/bumpers/triggers/start
+            if (n.Equals("A", StringComparison.OrdinalIgnoreCase) ||
+                n.Equals("B", StringComparison.OrdinalIgnoreCase) ||
+                n.Equals("X", StringComparison.OrdinalIgnoreCase) ||
+                n.Equals("Cross", StringComparison.OrdinalIgnoreCase) ||
+                n.Equals("Circle", StringComparison.OrdinalIgnoreCase) ||
+                n.Equals("Square", StringComparison.OrdinalIgnoreCase) ||
+                n.IndexOf("Left", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                n.IndexOf("Right", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                n.IndexOf("Shoulder", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                n.IndexOf("Trigger", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                n.IndexOf("Bumper", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                n.IndexOf("Start", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                n.IndexOf("Back", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                n.IndexOf("Select", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                n.IndexOf("Menu", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                n.IndexOf("View", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                n.IndexOf("Options", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                n.IndexOf("Share", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                n.IndexOf("Stick", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                n.IndexOf("D-Pad", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                n.IndexOf("DPad", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return false;
             }
 
             return false;
@@ -392,12 +578,26 @@ namespace Jaosnake.CeniReload.UI
         private UILayerKey FindLobbyLayerKey()
         {
             if (_lobby == null) return null;
-            if (_lobby.readyButton != null && _lobby.readyButton.requiredTopLayer != null)
+            if (_lobby.readyButton != null &&
+                _lobby.readyButton.requiredTopLayer != null &&
+                _lobby.readyButton.requiredTopLayer.isActiveAndEnabled)
             {
                 return _lobby.readyButton.requiredTopLayer;
             }
-            return _lobby.GetComponentInParent<UILayerKey>()
-                ?? _lobby.GetComponentInChildren<UILayerKey>(true);
+
+            var parentLayer = _lobby.GetComponentInParent<UILayerKey>();
+            if (parentLayer != null && parentLayer.isActiveAndEnabled)
+            {
+                return parentLayer;
+            }
+
+            var activeChildLayer = _lobby.GetComponentInChildren<UILayerKey>(false);
+            if (activeChildLayer != null && activeChildLayer.isActiveAndEnabled)
+            {
+                return activeChildLayer;
+            }
+
+            return null;
         }
 
         private UILayerKey FindMainMenuLayerKey()
@@ -461,8 +661,20 @@ namespace Jaosnake.CeniReload.UI
 
             ApplyFallbackBottomRightDock(_triggerButton.GetComponent<RectTransform>(), hostParent as RectTransform);
 
-            var outline = _triggerButton.gameObject.GetComponent<Outline>();
-            if (outline != null) outline.effectColor = UiFactory.AccentCyan;
+            var triggerNav = _triggerButton.navigation;
+            triggerNav.mode = Navigation.Mode.None;
+            _triggerButton.navigation = triggerNav;
+
+            var highlight = _triggerButton.gameObject.GetComponent<VaultFocusHighlight>();
+            if (highlight != null)
+            {
+                highlight.SetBaseColors(new Color(0.08f, 0.24f, 0.36f, 0.96f), UiFactory.AccentCyan);
+            }
+            else
+            {
+                var outline = _triggerButton.gameObject.GetComponent<Outline>();
+                if (outline != null) outline.effectColor = UiFactory.AccentCyan;
+            }
 
             ScheduleLobbyAlignment();
         }
@@ -928,8 +1140,13 @@ namespace Jaosnake.CeniReload.UI
             // Keep inactive while attaching MPEventSystemProvider, UILayerKey, and child MPButtons
             _modalRoot.SetActive(false);
 
-            var esProvider = _modalRoot.AddComponent<MPEventSystemProvider>();
-            esProvider.fallBackToMainEventSystem = true;
+            _modalEventSystemProvider = _modalRoot.AddComponent<MPEventSystemProvider>();
+            _modalEventSystemProvider.fallBackToMainEventSystem = true;
+            var initialEs = ResolveActiveEventSystem();
+            if (initialEs != null)
+            {
+                _modalEventSystemProvider.eventSystem = initialEs;
+            }
 
             _modalLayer = ScriptableObject.CreateInstance<RoR2.UILayer>();
             _modalLayer.priority = 100;
@@ -993,7 +1210,7 @@ namespace Jaosnake.CeniReload.UI
                 new Color(0.32f, 0.14f, 0.18f, 1f),
                 UiFactory.TextPrimary,
                 15f,
-                () => SetModalOpen(false),
+                OnClickCloseModal,
                 out _closeButtonLabel,
                 _modalLayerKey
             );
@@ -1110,7 +1327,7 @@ namespace Jaosnake.CeniReload.UI
                 new Color(0.45f, 0.14f, 0.18f, 1f),
                 Color.white,
                 14f,
-                () => SetDeleteConfirmVisible(true),
+                OnClickRequestDelete,
                 out _deleteButtonLabel,
                 _modalLayerKey
             );
@@ -1160,7 +1377,7 @@ namespace Jaosnake.CeniReload.UI
                 new Color(0.22f, 0.26f, 0.34f, 1f),
                 Color.white,
                 12f,
-                () => SetDeleteConfirmVisible(false),
+                OnClickCancelDelete,
                 out _confirmNoLabel,
                 _modalLayerKey
             );
@@ -1196,7 +1413,14 @@ namespace Jaosnake.CeniReload.UI
 
             if (open)
             {
+                var activeEs = ResolveActiveEventSystem();
+                if (_modalEventSystemProvider != null && activeEs != null)
+                {
+                    _modalEventSystemProvider.eventSystem = activeEs;
+                }
+
                 _openedFrame = Time.frameCount;
+                _lastActionFrame = Time.frameCount;
                 _modalRoot.SetActive(true);
                 if (_modalLayerKey != null) _modalLayerKey.enabled = true;
                 _modalRoot.transform.SetAsLastSibling();
@@ -1206,22 +1430,62 @@ namespace Jaosnake.CeniReload.UI
             else
             {
                 bool wasOpen = _modalRoot.activeSelf;
+                if (_focusCoroutine != null)
+                {
+                    StopCoroutine(_focusCoroutine);
+                    _focusCoroutine = null;
+                }
                 if (_modalLayerKey != null) _modalLayerKey.enabled = false;
                 _modalRoot.SetActive(false);
 
                 if (wasOpen)
                 {
                     _closedFrame = Time.frameCount;
-                    if (_triggerButton != null && _triggerButton.gameObject.activeInHierarchy && _triggerButton.interactable)
+                    if (_isMainMenuMode)
                     {
-                        SetSelectedGameObject(_triggerButton.gameObject);
+                        if (_triggerButton != null && _triggerButton.gameObject.activeInHierarchy && _triggerButton.interactable)
+                        {
+                            SetSelectedGameObject(_triggerButton.gameObject);
+                        }
+                    }
+                    else if (_lobby != null && _lobby.readyButton != null && _lobby.readyButton.gameObject.activeInHierarchy)
+                    {
+                        SetSelectedGameObject(_lobby.readyButton.gameObject);
                     }
                 }
             }
         }
 
+        private bool CanHandleModalButtonClick()
+        {
+            if (_modalRoot == null || !_modalRoot.activeSelf) return false;
+            if (Time.frameCount <= _openedFrame || _lastActionFrame == Time.frameCount) return false;
+            _lastActionFrame = Time.frameCount;
+            return true;
+        }
+
+        private void OnClickCloseModal()
+        {
+            if (!CanHandleModalButtonClick()) return;
+            SetModalOpen(false);
+        }
+
+        private void OnClickRequestDelete()
+        {
+            if (!CanHandleModalButtonClick()) return;
+            SetDeleteConfirmVisible(true);
+        }
+
+        private void OnClickCancelDelete()
+        {
+            if (!CanHandleModalButtonClick()) return;
+            SetDeleteConfirmVisible(false);
+        }
+
         private void ToggleFilterMode()
         {
+            if (!CanHandleModalButtonClick()) return;
+
             if (_isMainMenuMode && string.IsNullOrEmpty(GetSelectedSurvivorBodyName()))
             {
                 _showAllSurvivors = true;
@@ -1247,10 +1511,7 @@ namespace Jaosnake.CeniReload.UI
             _confirmPromptText.text = CeniReloadStrings.Get("CENIRELOAD_UI_CONFIRM_DELETE");
             _confirmYesLabel.text = CeniReloadStrings.Get("CENIRELOAD_UI_BTN_CONFIRM_YES");
             _confirmNoLabel.text = CeniReloadStrings.Get("CENIRELOAD_UI_BTN_CONFIRM_NO");
-            if (_footerHintText != null)
-            {
-                _footerHintText.text = CeniReloadStrings.Get("CENIRELOAD_UI_HINT_CLOSE");
-            }
+            UpdateFooterHint();
 
             _filterButtonLabel.text = _showAllSurvivors
                 ? CeniReloadStrings.Get("CENIRELOAD_UI_FILTER_ALL")
@@ -1269,6 +1530,7 @@ namespace Jaosnake.CeniReload.UI
                 }
             }
             _spawnedCards.Clear();
+            _cardViews.Clear();
 
             string profileKey = VaultRepository.GetCurrentProfileKey();
             if (_selectedSnapshot != null && !IsSnapshotStillValid(_selectedSnapshot, profileKey))
@@ -1350,18 +1612,180 @@ namespace Jaosnake.CeniReload.UI
                 _selectedSnapshot = firstPopulated;
             }
 
+            UpdateCardVisualsInPlace();
             UpdateInspectorPanel();
+            WireModalNavigation();
 
             var focusTarget = selectedCardButton ?? firstSelectable ?? _closeButton;
             if (focusTarget != null)
             {
-                SetSelectedGameObject(focusTarget.gameObject);
-                if (isActiveAndEnabled && _modalRoot != null && _modalRoot.activeInHierarchy)
+                ScheduleFocusNextFrame(focusTarget.gameObject);
+            }
+        }
+
+        private void SelectSnapshotInPlace(CheckpointSnapshot snapshot)
+        {
+            if (IsSameSnapshot(_selectedSnapshot, snapshot) && (_selectedSnapshot == null) == (snapshot == null))
+            {
+                return;
+            }
+
+            _selectedSnapshot = snapshot;
+            UpdateCardVisualsInPlace();
+            UpdateInspectorPanel();
+            WireModalNavigation();
+        }
+
+        private void UpdateCardVisualsInPlace()
+        {
+            for (int i = 0; i < _cardViews.Count; i++)
+            {
+                var view = _cardViews[i];
+                if (view == null) continue;
+
+                bool hasData = view.Snapshot != null;
+                bool isSelected = hasData && IsSameSnapshot(view.Snapshot, _selectedSnapshot);
+                bool missingSurvivor = hasData && view.Snapshot.HasMissingSurvivors();
+
+                Color bg = !hasData
+                    ? UiFactory.CardEmptyColor
+                    : (isSelected ? UiFactory.CardSelectedColor : UiFactory.CardBgColor);
+                Color borderColor = isSelected
+                    ? (missingSurvivor ? UiFactory.AccentRed : UiFactory.AccentCyan)
+                    : (missingSurvivor ? new Color(0.88f, 0.28f, 0.32f, 0.50f) : new Color(1f, 1f, 1f, 0.12f));
+
+                if (view.Highlight != null)
                 {
-                    if (_focusCoroutine != null) StopCoroutine(_focusCoroutine);
-                    _focusCoroutine = StartCoroutine(EnsureFocusNextFrame(focusTarget.gameObject));
+                    view.Highlight.SetBaseColors(bg, borderColor);
+                }
+
+                if (view.PortraitFrame != null && hasData)
+                {
+                    Color portraitBorder = missingSurvivor
+                        ? UiFactory.AccentRed
+                        : (isSelected ? UiFactory.AccentCyan : new Color(1f, 1f, 1f, 0.22f));
+                    var pOutline = view.PortraitFrame.GetComponent<Outline>();
+                    if (pOutline != null)
+                    {
+                        pOutline.effectColor = portraitBorder;
+                    }
                 }
             }
+        }
+
+        private MPButton GetPrimaryActionButton()
+        {
+            if (_loadButton != null && _loadButton.gameObject.activeInHierarchy && _loadButton.interactable)
+                return _loadButton;
+            if (_deleteConfirmBar != null && _deleteConfirmBar.activeSelf && _confirmNoButton != null && _confirmNoButton.interactable)
+                return _confirmNoButton;
+            if (_deleteButton != null && _deleteButton.gameObject.activeInHierarchy && _deleteButton.interactable)
+                return _deleteButton;
+            return _closeButton;
+        }
+
+        private MPButton GetSelectedOrFirstCardButton()
+        {
+            MPButton first = null;
+            for (int i = 0; i < _cardViews.Count; i++)
+            {
+                var v = _cardViews[i];
+                if (v == null || v.Button == null || !v.Button.gameObject.activeInHierarchy) continue;
+                if (first == null) first = v.Button;
+                if (v.Snapshot != null && IsSameSnapshot(v.Snapshot, _selectedSnapshot))
+                {
+                    return v.Button;
+                }
+            }
+            return first;
+        }
+
+        private void FocusDefaultModalControl()
+        {
+            MPButton target = GetSelectedOrFirstCardButton() ?? GetPrimaryActionButton() ?? _closeButton;
+            if (target != null && target.gameObject.activeInHierarchy)
+            {
+                SetSelectedGameObject(target.gameObject);
+            }
+        }
+
+        private void WireModalNavigation()
+        {
+            MPButton selectedCard = GetSelectedOrFirstCardButton();
+            MPButton rightAction = GetPrimaryActionButton();
+
+            bool loadActive = _loadButton != null && _loadButton.gameObject.activeInHierarchy && _loadButton.interactable;
+            bool deleteActive = _deleteButton != null && _deleteButton.gameObject.activeInHierarchy && _deleteButton.interactable;
+            bool confirmActive = _deleteConfirmBar != null && _deleteConfirmBar.activeSelf;
+
+            // Left column: slot cards
+            for (int i = 0; i < _cardViews.Count; i++)
+            {
+                var btn = _cardViews[i]?.Button;
+                if (btn == null) continue;
+
+                MPButton prev = i > 0 ? _cardViews[i - 1]?.Button : _filterButton;
+                MPButton next = (i + 1) < _cardViews.Count ? _cardViews[i + 1]?.Button : null;
+
+                SetExplicitNavigation(btn, prev, next, null, rightAction);
+            }
+
+            // Header bar: Filter <-> Close
+            SetExplicitNavigation(_filterButton, null, selectedCard ?? rightAction, null, _closeButton);
+            SetExplicitNavigation(_closeButton, null, rightAction ?? selectedCard, _filterButton, null);
+
+            // Right inspector: Load, Delete / Confirm Yes & No
+            MPButton belowLoad = confirmActive
+                ? _confirmNoButton
+                : (deleteActive ? _deleteButton : null);
+
+            if (_loadButton != null)
+            {
+                SetExplicitNavigation(_loadButton, _closeButton, belowLoad, selectedCard ?? _filterButton, null);
+            }
+
+            if (_deleteButton != null)
+            {
+                SetExplicitNavigation(_deleteButton, loadActive ? _loadButton : _closeButton, null, selectedCard ?? _filterButton, null);
+            }
+
+            if (_confirmYesButton != null)
+            {
+                SetExplicitNavigation(_confirmYesButton, loadActive ? _loadButton : _closeButton, null, selectedCard ?? _filterButton, _confirmNoButton);
+            }
+
+            if (_confirmNoButton != null)
+            {
+                SetExplicitNavigation(_confirmNoButton, loadActive ? _loadButton : _closeButton, null, _confirmYesButton, null);
+            }
+        }
+
+        private static void SetExplicitNavigation(Selectable target, Selectable up, Selectable down, Selectable left, Selectable right)
+        {
+            if (target == null) return;
+            var nav = target.navigation;
+            nav.mode = Navigation.Mode.Explicit;
+            nav.selectOnUp = up;
+            nav.selectOnDown = down;
+            nav.selectOnLeft = left;
+            nav.selectOnRight = right;
+            target.navigation = nav;
+        }
+
+        private void ScheduleFocusNextFrame(GameObject target)
+        {
+            if (target == null) return;
+            if (!isActiveAndEnabled || _modalRoot == null || !_modalRoot.activeInHierarchy)
+            {
+                SetSelectedGameObject(target);
+                return;
+            }
+
+            if (_focusCoroutine != null)
+            {
+                StopCoroutine(_focusCoroutine);
+            }
+            _focusCoroutine = StartCoroutine(EnsureFocusNextFrame(target));
         }
 
         private IEnumerator EnsureFocusNextFrame(GameObject target)
@@ -1374,10 +1798,10 @@ namespace Jaosnake.CeniReload.UI
             }
         }
 
-        private static void SetSelectedGameObject(GameObject target)
+        private void SetSelectedGameObject(GameObject target)
         {
             if (target == null) return;
-            EventSystem es = MPEventSystemManager.primaryEventSystem;
+            EventSystem es = ResolveActiveEventSystem();
             if (es == null) es = EventSystem.current;
             if (es != null)
             {
@@ -1423,9 +1847,10 @@ namespace Jaosnake.CeniReload.UI
 
             Color borderColor = isSelected
                 ? (missingSurvivor ? UiFactory.AccentRed : UiFactory.AccentCyan)
-                : (missingSurvivor ? new Color(0.88f, 0.28f, 0.32f, 0.50f) : new Color(1f, 1f, 1f, 0.08f));
+                : (missingSurvivor ? new Color(0.88f, 0.28f, 0.32f, 0.50f) : new Color(1f, 1f, 1f, 0.12f));
 
             var cardImg = UiFactory.CreatePanel($"CENIRELOAD_SlotCard_{slotNumber}", _cardsContainer, bg, borderColor);
+            var cardOutline = cardImg.GetComponent<Outline>();
             var le = cardImg.gameObject.AddComponent<LayoutElement>();
             le.preferredHeight = 84f;
 
@@ -1444,25 +1869,43 @@ namespace Jaosnake.CeniReload.UI
 
             var colors = btn.colors;
             colors.normalColor = Color.white;
-            colors.highlightedColor = new Color(1.16f, 1.18f, 1.22f, 1f);
-            colors.selectedColor = new Color(1.22f, 1.26f, 1.32f, 1f);
-            colors.pressedColor = new Color(0.88f, 0.88f, 0.88f, 1f);
+            colors.highlightedColor = Color.white;
+            colors.selectedColor = Color.white;
+            colors.pressedColor = new Color(0.84f, 0.86f, 0.90f, 1f);
             colors.colorMultiplier = 1f;
             btn.colors = colors;
 
             var nav = btn.navigation;
-            nav.mode = Navigation.Mode.Automatic;
+            nav.mode = Navigation.Mode.Explicit;
             btn.navigation = nav;
+
+            var highlight = cardImg.gameObject.AddComponent<VaultFocusHighlight>();
+            highlight.Configure(cardImg, cardOutline, bg, borderColor, () =>
+            {
+                // Live in-place preview while navigating with D-pad/stick (never destroys the card!)
+                SelectSnapshotInPlace(snapshot);
+            });
 
             btn.onClick.AddListener(() =>
             {
-                _selectedSnapshot = snapshot;
-                RebuildSlotCards();
+                if (!CanHandleModalButtonClick()) return;
+                SelectSnapshotInPlace(snapshot);
+
+                // In Gamepad mode, pressing A on a slot card moves focus straight to LOAD CHECKPOINT (or DELETE SLOT)
+                if (snapshot != null && IsGamepadActive())
+                {
+                    MPButton actionBtn = GetPrimaryActionButton();
+                    if (actionBtn != null && actionBtn != btn)
+                    {
+                        ScheduleFocusNextFrame(actionBtn.gameObject);
+                    }
+                }
             });
 
             var autoScroll = cardImg.gameObject.AddComponent<VaultAutoScroll>();
             autoScroll.Initialize(_scrollRect, cardImg.rectTransform);
 
+            Image portraitFrame = null;
             string slotHeader = CeniReloadStrings.Format("CENIRELOAD_UI_SLOT_LABEL", slotNumber);
             if (!hasData)
             {
@@ -1485,7 +1928,7 @@ namespace Jaosnake.CeniReload.UI
                     ? UiFactory.AccentRed
                     : (isSelected ? UiFactory.AccentCyan : new Color(1f, 1f, 1f, 0.22f));
 
-                var portraitFrame = UiFactory.CreatePortraitFrame("Portrait", cardImg.transform, portrait, portraitBorder);
+                portraitFrame = UiFactory.CreatePortraitFrame("Portrait", cardImg.transform, portrait, portraitBorder);
                 var portRect = portraitFrame.rectTransform;
                 portRect.anchorMin = new Vector2(0f, 0.5f);
                 portRect.anchorMax = new Vector2(0f, 0.5f);
@@ -1534,13 +1977,22 @@ namespace Jaosnake.CeniReload.UI
                 bot.rectTransform.offsetMax = new Vector2(-12f, 0f);
             }
 
+            _cardViews.Add(new SlotCardView
+            {
+                SlotNumber = slotNumber,
+                Snapshot = snapshot,
+                Button = btn,
+                PortraitFrame = portraitFrame,
+                Highlight = highlight
+            });
+
             _spawnedCards.Add(cardImg.gameObject);
             return btn;
         }
 
         private void UpdateInspectorPanel()
         {
-            SetDeleteConfirmVisible(false);
+            SetDeleteConfirmVisible(false, skipFocusShift: true);
 
             if (_selectedSnapshot == null)
             {
@@ -1555,6 +2007,7 @@ namespace Jaosnake.CeniReload.UI
                 _inspectorModStatus.text = string.Empty;
                 _loadButton.interactable = false;
                 _deleteButton.interactable = false;
+                WireModalNavigation();
                 return;
             }
 
@@ -1616,29 +2069,34 @@ namespace Jaosnake.CeniReload.UI
                 _loadButton.interactable = true;
                 _deleteButton.interactable = true;
             }
+
+            WireModalNavigation();
         }
 
-        private void SetDeleteConfirmVisible(bool visible)
+        private void SetDeleteConfirmVisible(bool visible, bool skipFocusShift = false)
         {
             bool wasConfirmVisible = _deleteConfirmBar != null && _deleteConfirmBar.activeSelf;
             if (_deleteConfirmBar != null) _deleteConfirmBar.SetActive(visible);
             if (_deleteButton != null) _deleteButton.gameObject.SetActive(!visible);
 
-            if (_modalRoot != null && _modalRoot.activeInHierarchy)
+            WireModalNavigation();
+
+            if (!skipFocusShift && _modalRoot != null && _modalRoot.activeInHierarchy)
             {
                 if (visible && _confirmNoButton != null)
                 {
-                    SetSelectedGameObject(_confirmNoButton.gameObject);
+                    ScheduleFocusNextFrame(_confirmNoButton.gameObject);
                 }
                 else if (!visible && wasConfirmVisible && _deleteButton != null && _deleteButton.gameObject.activeInHierarchy && _deleteButton.interactable)
                 {
-                    SetSelectedGameObject(_deleteButton.gameObject);
+                    ScheduleFocusNextFrame(_deleteButton.gameObject);
                 }
             }
         }
 
         private void OnClickLoadSelected()
         {
+            if (!CanHandleModalButtonClick()) return;
             if (_selectedSnapshot == null || _selectedSnapshot.HasMissingSurvivors()) return;
 
             bool started = _isMainMenuMode
@@ -1653,11 +2111,12 @@ namespace Jaosnake.CeniReload.UI
 
         private void OnConfirmDeleteSelected()
         {
+            if (!CanHandleModalButtonClick()) return;
             if (_selectedSnapshot == null) return;
             string profileKey = VaultRepository.GetCurrentProfileKey();
             VaultRepository.DeleteSlot(profileKey, _selectedSnapshot.survivorBodyName, _selectedSnapshot.slotIndex);
             _selectedSnapshot = null;
-            SetDeleteConfirmVisible(false);
+            SetDeleteConfirmVisible(false, skipFocusShift: true);
             RebuildSlotCards();
         }
     }

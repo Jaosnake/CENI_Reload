@@ -1,11 +1,116 @@
+using System;
 using RoR2.UI;
 using TMPro;
 using UnityEngine;
 using UnityEngine.Events;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 namespace Jaosnake.CeniReload.UI
 {
+    internal class VaultFocusHighlight : MonoBehaviour, ISelectHandler, IDeselectHandler, IPointerEnterHandler, IPointerExitHandler
+    {
+        public static readonly Color FocusYellow = new Color(0.98f, 0.80f, 0.08f, 1f);
+
+        private Image _background;
+        private Outline _outline;
+        private Color _baseBgColor;
+        private Color _baseBorderColor;
+        private Vector2 _baseBorderDistance = new Vector2(1.5f, -1.5f);
+        private Vector2 _focusBorderDistance = new Vector2(3f, -3f);
+        private Action _onSelected;
+
+        private bool _isSelected;
+        private bool _isHovered;
+
+        public void Configure(Image bg, Outline outline, Color baseBg, Color baseBorder, Action onSelected = null)
+        {
+            _background = bg;
+            _outline = outline;
+            _baseBgColor = baseBg;
+            _baseBorderColor = baseBorder;
+            _onSelected = onSelected;
+            ApplyVisualState();
+        }
+
+        public void SetBaseColors(Color baseBg, Color baseBorder)
+        {
+            _baseBgColor = baseBg;
+            _baseBorderColor = baseBorder;
+            ApplyVisualState();
+        }
+
+        public void OnSelect(BaseEventData eventData)
+        {
+            _isSelected = true;
+            ApplyVisualState();
+            _onSelected?.Invoke();
+        }
+
+        public void OnDeselect(BaseEventData eventData)
+        {
+            _isSelected = false;
+            ApplyVisualState();
+        }
+
+        public void OnPointerEnter(PointerEventData eventData)
+        {
+            _isHovered = true;
+            ApplyVisualState();
+        }
+
+        public void OnPointerExit(PointerEventData eventData)
+        {
+            _isHovered = false;
+            ApplyVisualState();
+        }
+
+        private void OnDisable()
+        {
+            _isSelected = false;
+            _isHovered = false;
+            ApplyVisualState();
+        }
+
+        private void ApplyVisualState()
+        {
+            if (_background != null)
+            {
+                if (_isSelected)
+                {
+                    _background.color = Color.Lerp(_baseBgColor, Color.white, 0.14f);
+                }
+                else if (_isHovered)
+                {
+                    _background.color = Color.Lerp(_baseBgColor, Color.white, 0.08f);
+                }
+                else
+                {
+                    _background.color = _baseBgColor;
+                }
+            }
+
+            if (_outline != null)
+            {
+                if (_isSelected)
+                {
+                    _outline.effectColor = FocusYellow;
+                    _outline.effectDistance = _focusBorderDistance;
+                }
+                else if (_isHovered)
+                {
+                    _outline.effectColor = Color.Lerp(_baseBorderColor, FocusYellow, 0.55f);
+                    _outline.effectDistance = new Vector2(2f, -2f);
+                }
+                else
+                {
+                    _outline.effectColor = _baseBorderColor;
+                    _outline.effectDistance = _baseBorderDistance;
+                }
+            }
+        }
+    }
+
     internal static class UiFactory
     {
         public static readonly Color BackdropColor = new Color(0.02f, 0.04f, 0.08f, 0.82f);
@@ -77,7 +182,9 @@ namespace Jaosnake.CeniReload.UI
             out TextMeshProUGUI labelComponent,
             UILayerKey requiredTopLayer = null)
         {
-            var img = CreatePanel(name, parent, normalColor, new Color(1f, 1f, 1f, 0.14f));
+            Color restBorder = new Color(1f, 1f, 1f, 0.16f);
+            var img = CreatePanel(name, parent, normalColor, restBorder);
+            var outline = img.GetComponent<Outline>();
             var btn = img.gameObject.AddComponent<MPButton>();
             btn.targetGraphic = img;
             btn.allowAllEventSystems = true;
@@ -86,16 +193,19 @@ namespace Jaosnake.CeniReload.UI
 
             var colors = btn.colors;
             colors.normalColor = Color.white;
-            colors.highlightedColor = new Color(1.18f, 1.18f, 1.18f, 1f);
-            colors.selectedColor = new Color(1.22f, 1.26f, 1.32f, 1f);
-            colors.pressedColor = new Color(0.85f, 0.85f, 0.85f, 1f);
-            colors.disabledColor = new Color(0.55f, 0.55f, 0.55f, 0.6f);
+            colors.highlightedColor = Color.white;
+            colors.selectedColor = Color.white;
+            colors.pressedColor = new Color(0.82f, 0.84f, 0.88f, 1f);
+            colors.disabledColor = new Color(0.50f, 0.50f, 0.50f, 0.55f);
             colors.colorMultiplier = 1f;
             btn.colors = colors;
 
             var nav = btn.navigation;
-            nav.mode = Navigation.Mode.Automatic;
+            nav.mode = Navigation.Mode.Explicit;
             btn.navigation = nav;
+
+            var highlight = img.gameObject.AddComponent<VaultFocusHighlight>();
+            highlight.Configure(img, outline, normalColor, restBorder);
 
             if (onClick != null)
             {
