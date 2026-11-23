@@ -97,6 +97,7 @@ namespace Jaosnake.CeniReload.UI
         private int _openedFrame = -1;
         private int _closedFrame = -1;
         private int _lastActionFrame = -1;
+        private float _lastLockToggleTime = -10f;
         private bool _loggedLobbyGamepadInfo;
         private Coroutine _alignCoroutine;
         private Coroutine _focusCoroutine;
@@ -441,6 +442,7 @@ namespace Jaosnake.CeniReload.UI
 
         private bool IsGamepadLockButtonPressed(MPEventSystem es)
         {
+            bool hasRewiredJoystick = false;
             MPEventSystem activeEs = es ?? ResolveActiveEventSystem();
             if (activeEs != null && activeEs.player != null)
             {
@@ -454,6 +456,7 @@ namespace Jaosnake.CeniReload.UI
                 if (activeEs.player.controllers != null)
                 {
                     var joysticks = activeEs.player.controllers.Joysticks;
+                    if (joysticks.Count > 0) hasRewiredJoystick = true;
                     for (int i = 0; i < joysticks.Count; i++)
                     {
                         if (IsJoystickLeftFaceButtonJustPressed(joysticks[i])) return true;
@@ -464,13 +467,15 @@ namespace Jaosnake.CeniReload.UI
             if (Rewired.ReInput.isReady && Rewired.ReInput.controllers != null)
             {
                 var allJoys = Rewired.ReInput.controllers.Joysticks;
+                if (allJoys.Count > 0) hasRewiredJoystick = true;
                 for (int i = 0; i < allJoys.Count; i++)
                 {
                     if (IsJoystickLeftFaceButtonJustPressed(allJoys[i])) return true;
                 }
             }
 
-            return Input.GetKeyDown(KeyCode.JoystickButton2);
+            // Only fall back to Unity legacy Input when Rewired has no joysticks (prevents 1-frame skew double-toggle!)
+            return !hasRewiredJoystick && Input.GetKeyDown(KeyCode.JoystickButton2);
         }
 
         private static bool IsJoystickLeftFaceButtonJustPressed(Rewired.Joystick joy)
@@ -1938,6 +1943,9 @@ namespace Jaosnake.CeniReload.UI
         private void ToggleLockOnSnapshot(CheckpointSnapshot snapshot)
         {
             if (snapshot == null) return;
+            if ((Time.unscaledTime - _lastLockToggleTime) < 0.18f) return;
+            _lastLockToggleTime = Time.unscaledTime;
+
             string profileKey = VaultRepository.GetCurrentProfileKey();
             string bucketKey = snapshot.GetStorageBucket();
             if (!VaultRepository.ToggleSlotLock(profileKey, bucketKey, snapshot.slotIndex, out bool newLocked))
