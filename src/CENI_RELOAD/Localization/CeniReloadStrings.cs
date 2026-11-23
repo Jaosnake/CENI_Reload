@@ -39,7 +39,12 @@ namespace Jaosnake.CeniReload.Localization
             ["CENIRELOAD_CHAT_SAVED"] = "<color=#4de1ff><b>[CENI RELOAD]</b></color> Checkpoint saved to Slot {0} ({1} — Stage {2}).",
             ["CENIRELOAD_CHAT_SAVE_ERROR"] = "<color=#ff5c5c><b>[CENI RELOAD]</b></color> Could not save checkpoint for Stage {0}.",
             ["CENIRELOAD_CHAT_LOADED"] = "<color=#4de1ff><b>[CENI RELOAD]</b></color> Checkpoint restored from Slot {0} ({1} — Stage {2}).",
-            ["CENIRELOAD_UI_NO_SAVES"] = "No checkpoints found for this view."
+            ["CENIRELOAD_UI_NO_SAVES"] = "No checkpoints found for this view.",
+            ["CENIRELOAD_UI_MISSING_SURVIVOR_BADGE"] = "Missing Mod",
+            ["CENIRELOAD_UI_MISSING_SURVIVOR_WARN"] = "Survivor '{0}' is not installed in this profile. Reinstall the mod to load this checkpoint.",
+            ["CENIRELOAD_UI_LABEL_LOOP"] = "Loop",
+            ["CENIRELOAD_UI_ITEMS_SHORT"] = "items",
+            ["CENIRELOAD_UI_HINT_CLOSE"] = "ESC / B: Close"
         };
 
         private static readonly Dictionary<string, string> PortugueseBr = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -72,7 +77,12 @@ namespace Jaosnake.CeniReload.Localization
             ["CENIRELOAD_CHAT_SAVED"] = "<color=#4de1ff><b>[CENI RELOAD]</b></color> Checkpoint salvo no Slot {0} ({1} — Fase {2}).",
             ["CENIRELOAD_CHAT_SAVE_ERROR"] = "<color=#ff5c5c><b>[CENI RELOAD]</b></color> Não foi possível salvar o checkpoint da Fase {0}.",
             ["CENIRELOAD_CHAT_LOADED"] = "<color=#4de1ff><b>[CENI RELOAD]</b></color> Checkpoint restaurado do Slot {0} ({1} — Fase {2}).",
-            ["CENIRELOAD_UI_NO_SAVES"] = "Nenhum checkpoint encontrado neste filtro."
+            ["CENIRELOAD_UI_NO_SAVES"] = "Nenhum checkpoint encontrado neste filtro.",
+            ["CENIRELOAD_UI_MISSING_SURVIVOR_BADGE"] = "Mod Ausente",
+            ["CENIRELOAD_UI_MISSING_SURVIVOR_WARN"] = "O sobrevivente '{0}' não está instalado neste perfil. Reinstale o mod para carregar este checkpoint.",
+            ["CENIRELOAD_UI_LABEL_LOOP"] = "Loop",
+            ["CENIRELOAD_UI_ITEMS_SHORT"] = "itens",
+            ["CENIRELOAD_UI_HINT_CLOSE"] = "ESC / B: Fechar"
         };
 
         private static readonly Dictionary<string, Dictionary<string, string>> ExternalOverrides =

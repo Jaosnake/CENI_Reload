@@ -14,17 +14,24 @@ namespace Jaosnake.CeniReload.Core
     {
         public static CheckpointSnapshot PendingSnapshot { get; private set; }
         public static bool IsRestoringRun => PendingSnapshot != null;
+        public static bool AutoLaunchOnPreGame { get; private set; }
         private static int _restoredPlayerCursor;
 
         public static void ClearPending()
         {
             PendingSnapshot = null;
+            AutoLaunchOnPreGame = false;
             _restoredPlayerCursor = 0;
         }
 
         public static bool BeginLoadFromLobby(CheckpointSnapshot snapshot)
         {
             if (snapshot == null) return false;
+            if (snapshot.HasMissingSurvivors())
+            {
+                CeniReloadPlugin.Log?.LogWarning($"Cannot load checkpoint Slot {snapshot.slotIndex}: missing survivor '{snapshot.GetFirstMissingSurvivorName()}'.");
+                return false;
+            }
 
             var preGame = PreGameController.instance;
             if (preGame == null)
@@ -36,23 +43,10 @@ namespace Jaosnake.CeniReload.Core
             try
             {
                 PendingSnapshot = snapshot;
+                AutoLaunchOnPreGame = false;
                 _restoredPlayerCursor = 0;
 
-                if (!string.IsNullOrEmpty(snapshot.gameModeName))
-                {
-                    var gmIdx = GameModeCatalog.FindGameModeIndex(snapshot.gameModeName);
-                    if (gmIdx != GameModeIndex.Invalid)
-                    {
-                        preGame.gameModeIndex = gmIdx;
-                    }
-                }
-
-                var restoredRules = DeserializeRuleBook(snapshot.ruleBookBase64);
-                if (restoredRules != null)
-                {
-                    var setRuleBookMethod = AccessTools.Method(typeof(PreGameController), "SetRuleBook");
-                    setRuleBookMethod?.Invoke(preGame, new object[] { restoredRules });
-                }
+                ApplyPreGameSettings(preGame, snapshot);
 
                 CeniReloadPlugin.Log?.LogInfo($"Launching run from checkpoint Slot {snapshot.slotIndex} ({snapshot.survivorBodyName}, Stage {snapshot.stageClearCount + 1}: {snapshot.stageSceneName})");
                 preGame.StartLaunch();
@@ -66,6 +60,90 @@ namespace Jaosnake.CeniReload.Core
             }
         }
 
+        public static bool BeginLoadFromMainMenu(CheckpointSnapshot snapshot)
+        {
+            if (snapshot == null) return false;
+            if (snapshot.HasMissingSurvivors())
+            {
+                CeniReloadPlugin.Log?.LogWarning($"Cannot load checkpoint Slot {snapshot.slotIndex}: missing survivor '{snapshot.GetFirstMissingSurvivorName()}'.");
+                return false;
+            }
+
+            if (RoR2.Console.instance == null)
+            {
+                CeniReloadPlugin.Log?.LogWarning("Cannot load checkpoint from main menu: RoR2.Console.instance is null.");
+                ClearPending();
+                return false;
+            }
+
+            try
+            {
+                PendingSnapshot = snapshot;
+                AutoLaunchOnPreGame = true;
+                _restoredPlayerCursor = 0;
+
+                string gm = "ClassicRun";
+                if (!string.IsNullOrEmpty(snapshot.gameModeName) &&
+                    GameModeCatalog.FindGameModeIndex(snapshot.gameModeName) != GameModeIndex.Invalid)
+                {
+                    gm = snapshot.gameModeName;
+                }
+
+                CeniReloadPlugin.Log?.LogInfo($"Transitioning from main menu to load checkpoint Slot {snapshot.slotIndex} ({snapshot.survivorBodyName}, Mode {gm}, Stage {snapshot.stageClearCount + 1}: {snapshot.stageSceneName})");
+                RoR2.Console.instance.SubmitCmd((NetworkUser)null, $"transition_command \"gamemode {gm}; host 0;\"", false);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                CeniReloadPlugin.Log?.LogError($"Failed to launch checkpoint from main menu: {ex}");
+                ClearPending();
+                return false;
+            }
+        }
+
+        public static IEnumerator TryAutoLaunchFromPreGame(PreGameController preGame)
+        {
+            yield return null;
+            yield return null;
+
+            if (!AutoLaunchOnPreGame || PendingSnapshot == null || preGame == null)
+                yield break;
+
+            AutoLaunchOnPreGame = false;
+
+            try
+            {
+                var snapshot = PendingSnapshot;
+                ApplyPreGameSettings(preGame, snapshot);
+                CeniReloadPlugin.Log?.LogInfo($"Auto-launching run from PreGame for checkpoint Slot {snapshot.slotIndex} ({snapshot.survivorBodyName}, Stage {snapshot.stageClearCount + 1}: {snapshot.stageSceneName})");
+                preGame.StartLaunch();
+            }
+            catch (Exception ex)
+            {
+                CeniReloadPlugin.Log?.LogError($"Failed to auto-launch checkpoint from PreGame: {ex}");
+                ClearPending();
+            }
+        }
+
+        private static void ApplyPreGameSettings(PreGameController preGame, CheckpointSnapshot snapshot)
+        {
+            if (!string.IsNullOrEmpty(snapshot.gameModeName))
+            {
+                var gmIdx = GameModeCatalog.FindGameModeIndex(snapshot.gameModeName);
+                if (gmIdx != GameModeIndex.Invalid)
+                {
+                    preGame.gameModeIndex = gmIdx;
+                }
+            }
+
+            var restoredRules = DeserializeRuleBook(snapshot.ruleBookBase64);
+            if (restoredRules != null)
+            {
+                var setRuleBookMethod = AccessTools.Method(typeof(PreGameController), "SetRuleBook");
+                setRuleBookMethod?.Invoke(preGame, new object[] { restoredRules });
+            }
+        }
+
         public static void ApplyToRunStart(Run run)
         {
             var snap = PendingSnapshot;
@@ -75,9 +153,23 @@ namespace Jaosnake.CeniReload.Core
             {
                 run.seed = snap.seed;
                 run.NetworkstageClearCount = snap.stageClearCount;
+                run.Network_loopClearCount = snap.loopClearCount;
+                run.NetworkstageClearCountAtLoopStart = snap.stageClearCountAtLoopStart;
                 run.shopPortalCount = snap.shopPortalCount;
                 run.NetworkfixedTime = snap.runFixedTime;
                 run.SetRunStopwatch(snap.runFixedTime);
+
+                if (snap.eventFlags != null)
+                {
+                    for (int i = 0; i < snap.eventFlags.Count; i++)
+                    {
+                        string flag = snap.eventFlags[i];
+                        if (!string.IsNullOrEmpty(flag))
+                        {
+                            run.SetEventFlag(flag);
+                        }
+                    }
+                }
 
                 var restoredRules = DeserializeRuleBook(snap.ruleBookBase64);
                 if (restoredRules != null)
@@ -130,7 +222,7 @@ namespace Jaosnake.CeniReload.Core
 
                 if (master.inventory != null)
                 {
-                    RestoreInventory(master.inventory, playerSnap.items, playerSnap.equipments, playerSnap.infusionBonus,
+                    RestoreInventory(master.inventory, playerSnap.items, playerSnap.tempItems, playerSnap.equipments, playerSnap.infusionBonus,
                         (byte)Mathf.Clamp(playerSnap.activeEquipmentSlot, 0, 255),
                         (byte)Mathf.Clamp(playerSnap.activeEquipmentSet, 0, 255));
                 }
@@ -165,48 +257,56 @@ namespace Jaosnake.CeniReload.Core
                 }
 
                 var players = PlayerCharacterMasterController.instances;
-                for (int i = 0; i < players.Count && i < snap.players.Count; i++)
+                if (snap.players != null)
                 {
-                    var pcmc = players[i];
-                    var pSnap = snap.players[i];
-                    if (pcmc == null || pcmc.master == null || pSnap.minions == null) continue;
-
-                    var bodyObj = pcmc.master.GetBodyObject();
-                    Vector3 basePos = bodyObj != null ? bodyObj.transform.position : Vector3.zero;
-                    Quaternion baseRot = bodyObj != null ? bodyObj.transform.rotation : Quaternion.identity;
-
-                    for (int m = 0; m < pSnap.minions.Count; m++)
+                    for (int i = 0; i < players.Count && i < snap.players.Count; i++)
                     {
-                        var minionSnap = pSnap.minions[m];
-                        var masterPrefab = MasterCatalog.FindMasterPrefab(minionSnap.masterName);
-                        if (masterPrefab == null) continue;
+                        var pcmc = players[i];
+                        var pSnap = snap.players[i];
+                        if (pcmc == null || pcmc.master == null || pSnap == null || pSnap.minions == null) continue;
 
-                        Vector3 offset = new Vector3(
-                            Mathf.Cos(m * 1.1f) * 3f,
-                            1.5f,
-                            Mathf.Sin(m * 1.1f) * 3f
-                        );
+                        var bodyObj = pcmc.master.GetBodyObject();
+                        Vector3 basePos = bodyObj != null ? bodyObj.transform.position : Vector3.zero;
+                        Quaternion baseRot = bodyObj != null ? bodyObj.transform.rotation : Quaternion.identity;
 
-                        var summon = new MasterSummon
+                        for (int m = 0; m < pSnap.minions.Count; m++)
                         {
-                            masterPrefab = masterPrefab,
-                            position = basePos + offset,
-                            rotation = baseRot,
-                            summonerBodyObject = bodyObj,
-                            ignoreTeamMemberLimit = true,
-                            useAmbientLevel = true
-                        };
+                            var minionSnap = pSnap.minions[m];
+                            if (minionSnap == null || string.IsNullOrEmpty(minionSnap.masterName)) continue;
 
-                        var spawnedMaster = summon.Perform();
-                        if (spawnedMaster != null && spawnedMaster.inventory != null)
-                        {
-                            RestoreInventory(spawnedMaster.inventory, minionSnap.items, minionSnap.equipments, 0, 0, 0);
+                            var masterPrefab = MasterCatalog.FindMasterPrefab(minionSnap.masterName);
+                            if (masterPrefab == null) continue;
+
+                            Vector3 offset = new Vector3(
+                                Mathf.Cos(m * 1.1f) * 3f,
+                                1.5f,
+                                Mathf.Sin(m * 1.1f) * 3f
+                            );
+
+                            var summon = new MasterSummon
+                            {
+                                masterPrefab = masterPrefab,
+                                position = basePos + offset,
+                                rotation = baseRot,
+                                summonerBodyObject = bodyObj,
+                                ignoreTeamMemberLimit = true,
+                                useAmbientLevel = true
+                            };
+
+                            var spawnedMaster = summon.Perform();
+                            if (spawnedMaster != null && spawnedMaster.inventory != null)
+                            {
+                                RestoreInventory(spawnedMaster.inventory, minionSnap.items, minionSnap.tempItems, minionSnap.equipments, 0, 0, 0);
+                            }
                         }
                     }
                 }
 
-                string stageName = CeniReloadStrings.LocalizeGameToken(snap.stageDisplayToken, snap.stageSceneName);
-                Chat.AddMessage(CeniReloadStrings.Format("CENIRELOAD_CHAT_LOADED", snap.slotIndex, stageName, snap.stageClearCount + 1));
+                if (CeniReloadPlugin.ShowChatNotifications == null || CeniReloadPlugin.ShowChatNotifications.Value)
+                {
+                    string stageName = CeniReloadStrings.LocalizeGameToken(snap.stageDisplayToken, snap.stageSceneName);
+                    Chat.AddMessage(CeniReloadStrings.Format("CENIRELOAD_CHAT_LOADED", snap.slotIndex, stageName, snap.stageClearCount + 1));
+                }
             }
             catch (Exception ex)
             {
@@ -221,6 +321,7 @@ namespace Jaosnake.CeniReload.Core
         private static void RestoreInventory(
             Inventory inventory,
             List<ItemEntry> items,
+            List<TempItemEntry> tempItems,
             List<EquipmentEntry> equipments,
             uint infusionBonus,
             byte activeSlot,
@@ -230,19 +331,46 @@ namespace Jaosnake.CeniReload.Core
 
             if (items != null)
             {
+                var seenPermanent = new HashSet<ItemIndex>();
                 for (int i = 0; i < items.Count; i++)
                 {
                     var entry = items[i];
                     if (entry == null || entry.count <= 0 || string.IsNullOrEmpty(entry.itemName)) continue;
 
                     var itemIndex = ItemCatalog.FindItemIndex(entry.itemName);
-                    if (itemIndex == ItemIndex.None) continue;
+                    if (itemIndex == ItemIndex.None || ItemCatalog.GetItemDef(itemIndex) == null) continue;
+                    if (!seenPermanent.Add(itemIndex)) continue;
 
                     int existing = inventory.GetItemCountPermanent(itemIndex);
                     int delta = entry.count - existing;
                     if (delta > 0)
                     {
                         inventory.GiveItemPermanent(itemIndex, delta);
+                    }
+                }
+            }
+
+            if (tempItems != null)
+            {
+                var seenTemp = new HashSet<ItemIndex>();
+                for (int i = 0; i < tempItems.Count; i++)
+                {
+                    var temp = tempItems[i];
+                    if (temp == null || string.IsNullOrEmpty(temp.itemName) ||
+                        float.IsNaN(temp.rawValue) || float.IsInfinity(temp.rawValue) || temp.rawValue <= 0.001f)
+                    {
+                        continue;
+                    }
+
+                    var itemIdx = ItemCatalog.FindItemIndex(temp.itemName);
+                    if (itemIdx == ItemIndex.None || ItemCatalog.GetItemDef(itemIdx) == null) continue;
+                    if (!seenTemp.Add(itemIdx)) continue;
+
+                    float existingTemp = inventory.GetTempItemRawValue(itemIdx);
+                    float deltaTemp = temp.rawValue - existingTemp;
+                    if (deltaTemp > 0.001f)
+                    {
+                        inventory.GiveItemTemp(itemIdx, deltaTemp);
                     }
                 }
             }

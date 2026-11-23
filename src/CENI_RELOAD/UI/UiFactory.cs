@@ -1,3 +1,4 @@
+using RoR2.UI;
 using TMPro;
 using UnityEngine;
 using UnityEngine.Events;
@@ -65,7 +66,7 @@ namespace Jaosnake.CeniReload.UI
             return tmp;
         }
 
-        public static Button CreateButton(
+        public static MPButton CreateButton(
             string name,
             Transform parent,
             string label,
@@ -73,16 +74,20 @@ namespace Jaosnake.CeniReload.UI
             Color textColor,
             float fontSize,
             UnityAction onClick,
-            out TextMeshProUGUI labelComponent)
+            out TextMeshProUGUI labelComponent,
+            UILayerKey requiredTopLayer = null)
         {
             var img = CreatePanel(name, parent, normalColor, new Color(1f, 1f, 1f, 0.14f));
-            var btn = img.gameObject.AddComponent<Button>();
+            var btn = img.gameObject.AddComponent<MPButton>();
             btn.targetGraphic = img;
+            btn.allowAllEventSystems = true;
+            btn.requiredTopLayer = requiredTopLayer;
+            btn.defaultFallbackButton = false;
 
             var colors = btn.colors;
             colors.normalColor = Color.white;
             colors.highlightedColor = new Color(1.18f, 1.18f, 1.18f, 1f);
-            colors.selectedColor = new Color(1.15f, 1.15f, 1.15f, 1f);
+            colors.selectedColor = new Color(1.22f, 1.26f, 1.32f, 1f);
             colors.pressedColor = new Color(0.85f, 0.85f, 0.85f, 1f);
             colors.disabledColor = new Color(0.55f, 0.55f, 0.55f, 0.6f);
             colors.colorMultiplier = 1f;
@@ -100,6 +105,54 @@ namespace Jaosnake.CeniReload.UI
             labelComponent = CreateText("Label", img.transform, label, fontSize, textColor, TextAlignmentOptions.Center, FontStyles.Bold);
             StretchFull(labelComponent.rectTransform, 10f, 4f);
             return btn;
+        }
+
+        public static Image CreatePortraitFrame(string name, Transform parent, Texture portrait, Color borderColor)
+        {
+            var frame = CreatePanel(name, parent, new Color(0.05f, 0.08f, 0.13f, 1f), borderColor);
+            frame.raycastTarget = false;
+
+            var rawRect = CreateRect("PortraitImage", frame.transform);
+            StretchFull(rawRect, 2f, 2f);
+            var rawImg = rawRect.gameObject.AddComponent<RawImage>();
+            rawImg.raycastTarget = false;
+
+            var placeholder = CreateText("PortraitPlaceholder", frame.transform, "?", 22f, TextMuted, TextAlignmentOptions.Center, FontStyles.Bold);
+            placeholder.enableAutoSizing = true;
+            placeholder.fontSizeMin = 12f;
+            placeholder.fontSizeMax = 28f;
+            StretchFull(placeholder.rectTransform, 2f, 2f);
+
+            UpdatePortraitFrame(frame, portrait, borderColor);
+            return frame;
+        }
+
+        public static void UpdatePortraitFrame(Image frame, Texture portrait, Color borderColor)
+        {
+            if (frame == null) return;
+
+            var outline = frame.GetComponent<Outline>();
+            if (outline != null)
+            {
+                outline.effectColor = borderColor;
+            }
+
+            var rawImg = frame.GetComponentInChildren<RawImage>(true);
+            var placeholder = frame.GetComponentInChildren<TextMeshProUGUI>(true);
+
+            bool hasPortrait = portrait != null;
+            if (rawImg != null)
+            {
+                rawImg.texture = portrait;
+                rawImg.color = Color.white;
+                rawImg.enabled = hasPortrait;
+            }
+
+            if (placeholder != null)
+            {
+                placeholder.gameObject.SetActive(!hasPortrait);
+                placeholder.color = borderColor == AccentRed ? AccentRed : TextMuted;
+            }
         }
 
         public static void StretchFull(RectTransform rect, float padX = 0f, float padY = 0f)

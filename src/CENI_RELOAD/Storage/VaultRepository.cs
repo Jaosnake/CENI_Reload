@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using BepInEx;
@@ -57,7 +58,7 @@ namespace Jaosnake.CeniReload.Storage
             DateTime oldestTime = DateTime.MaxValue;
             for (int i = 0; i < MaxSlotsPerSurvivor; i++)
             {
-                if (DateTime.TryParse(slots[i].savedUtcIso, out DateTime t) && t < oldestTime)
+                if (DateTime.TryParse(slots[i].savedUtcIso, CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal, out DateTime t) && t < oldestTime)
                 {
                     oldestTime = t;
                     oldestSlot = i + 1;

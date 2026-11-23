@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using BepInEx.Bootstrap;
+using RoR2;
+using UnityEngine;
 
 namespace Jaosnake.CeniReload.Model
 {
@@ -21,6 +24,8 @@ namespace Jaosnake.CeniReload.Model
         public string stageSceneName;
         public string stageDisplayToken;
         public int stageClearCount;
+        public int loopClearCount;
+        public int stageClearCountAtLoopStart;
         public float runFixedTime;
         public string difficultyName;
         public string difficultyDisplayToken;
@@ -28,6 +33,7 @@ namespace Jaosnake.CeniReload.Model
         public int shopPortalCount;
         public string ruleBookBase64;
         public ulong teamExperience;
+        public List<string> eventFlags = new List<string>();
 
         // Entities
         public List<PlayerSnapshot> players = new List<PlayerSnapshot>();
@@ -43,7 +49,7 @@ namespace Jaosnake.CeniReload.Model
 
         public string FormatSavedDate()
         {
-            if (DateTime.TryParse(savedUtcIso, out DateTime parsed))
+            if (DateTime.TryParse(savedUtcIso, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out DateTime parsed))
             {
                 return parsed.ToLocalTime().ToString("dd/MM/yyyy HH:mm");
             }
@@ -56,8 +62,29 @@ namespace Jaosnake.CeniReload.Model
             if (players == null) return 0;
             foreach (var p in players)
             {
-                if (p.items == null) continue;
-                foreach (var item in p.items) total += item.count;
+                if (p == null || p.items == null) continue;
+                foreach (var item in p.items)
+                {
+                    if (item != null && item.count > 0) total += item.count;
+                }
+            }
+            return total;
+        }
+
+        public int GetTotalTempItemCount()
+        {
+            int total = 0;
+            if (players == null) return 0;
+            foreach (var p in players)
+            {
+                if (p == null || p.tempItems == null) continue;
+                foreach (var t in p.tempItems)
+                {
+                    if (t != null && !float.IsNaN(t.rawValue) && !float.IsInfinity(t.rawValue) && t.rawValue > 0f)
+                    {
+                        total += Mathf.CeilToInt(t.rawValue);
+                    }
+                }
             }
             return total;
         }
@@ -68,9 +95,38 @@ namespace Jaosnake.CeniReload.Model
             if (players == null) return 0;
             foreach (var p in players)
             {
-                if (p.minions != null) total += p.minions.Count;
+                if (p != null && p.minions != null) total += p.minions.Count;
             }
             return total;
+        }
+
+        public bool HasMissingSurvivors()
+        {
+            return !string.IsNullOrEmpty(GetFirstMissingSurvivorName());
+        }
+
+        public string GetFirstMissingSurvivorName()
+        {
+            if (!BodyCatalog.availability.available) return string.Empty;
+
+            if (!string.IsNullOrEmpty(survivorBodyName) && BodyCatalog.FindBodyPrefab(survivorBodyName) == null)
+            {
+                return survivorBodyName;
+            }
+
+            if (players != null)
+            {
+                for (int i = 0; i < players.Count; i++)
+                {
+                    var p = players[i];
+                    if (p != null && !string.IsNullOrEmpty(p.bodyName) && BodyCatalog.FindBodyPrefab(p.bodyName) == null)
+                    {
+                        return p.bodyName;
+                    }
+                }
+            }
+
+            return string.Empty;
         }
 
         public bool HasModMismatch()
@@ -83,8 +139,9 @@ namespace Jaosnake.CeniReload.Model
 
             foreach (var stamp in loadedPlugins)
             {
+                if (stamp == null || string.IsNullOrEmpty(stamp.guid)) return true;
                 if (!current.TryGetValue(stamp.guid, out var info)) return true;
-                string ver = info.Metadata?.Version?.ToString() ?? "";
+                string ver = info?.Metadata?.Version?.ToString() ?? "";
                 if (!string.Equals(ver, stamp.version, StringComparison.Ordinal)) return true;
             }
             return false;
@@ -104,6 +161,7 @@ namespace Jaosnake.CeniReload.Model
         public int activeEquipmentSet;
         public string loadoutBase64;
         public List<ItemEntry> items = new List<ItemEntry>();
+        public List<TempItemEntry> tempItems = new List<TempItemEntry>();
         public List<EquipmentEntry> equipments = new List<EquipmentEntry>();
         public List<MinionSnapshot> minions = new List<MinionSnapshot>();
     }
@@ -113,6 +171,13 @@ namespace Jaosnake.CeniReload.Model
     {
         public string itemName;
         public int count;
+    }
+
+    [Serializable]
+    public class TempItemEntry
+    {
+        public string itemName;
+        public float rawValue;
     }
 
     [Serializable]
@@ -131,6 +196,7 @@ namespace Jaosnake.CeniReload.Model
         public string masterName;
         public string bodyName;
         public List<ItemEntry> items = new List<ItemEntry>();
+        public List<TempItemEntry> tempItems = new List<TempItemEntry>();
         public List<EquipmentEntry> equipments = new List<EquipmentEntry>();
     }
 

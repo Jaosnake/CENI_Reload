@@ -12,7 +12,7 @@
 
 ### 🎯 Overview
 
-**C.E.N.I RELOAD** (`Jaosnake-CENI_RELOAD`) automatically records a full run checkpoint at the start of every playable stage and adds a sleek **Checkpoint Vault** directly inside the Character Select lobby so you can browse, inspect, load, or clear your saved runs anytime.
+**C.E.N.I RELOAD** (`Jaosnake-CENI_RELOAD`) automatically records a full run checkpoint at the start of every playable stage and adds a sleek **Checkpoint Vault** directly in both the **Main Menu** and the **Character Select lobby** so you can browse, inspect, load, or clear your saved runs anytime.
 
 ### ⚽ What does C.E.N.I mean?
 
@@ -33,10 +33,10 @@ Just like Rogério Ceni saved São Paulo on the pitch, **C.E.N.I RELOAD** saves 
 | 🛠️ **100% Original Architecture** | Built from the ground up in C# (`netstandard2.1`) under `Jaosnake.CeniReload` using HarmonyX only — single dependency (`bbepis-BepInExPack-5.4.2121`). |
 | 💾 **Automatic Stage Checkpoints** | Automatically captures a full snapshot at the start of every gameplay stage. |
 | 🗂️ **5 Rotating Slots per Survivor** | Stores up to **5 independent `.cenireload.json` slots** per survivor and profile, automatically rotating the oldest slot when full. |
-| 🃏 **Redesigned Two-Column Vault UI** | Open **CENI RELOAD VAULT** from the lobby to browse visual slot cards (with *Current Survivor* / *All Survivors* filter), inspect detailed stats on the right, load checkpoints, or delete slots with inline confirmation. |
-| 🛡️ **Complete State Preservation** | Saves run seed, stage, stopwatch, difficulty, artifacts/rules (`RuleBook`), team experience, survivor loadout, gold, void coins, permanent items (stored by **item name** for mod-order safety), equipment slots/sets, and owned drones/allies. |
-| 🔍 **Mod-List Verification** | Checks your active BepInEx plugin list against the checkpoint metadata and highlights any mismatch right inside the inspector. |
-| 🎮 **Mouse, Keyboard & Controller** | Full standard UI navigation plus instant close via `ESC` or controller `B` / `Circle`. |
+| 🃏 **Redesigned Two-Column Vault UI** | Open **CENI RELOAD VAULT** directly from the **Main Menu** or the **Character Select lobby** to browse visual slot cards with **survivor portraits** (*Current Survivor* / *All Survivors* filter), inspect detailed stats on the right, load checkpoints, or delete slots with inline confirmation. |
+| 🛡️ **Complete State Preservation** | Saves run seed, stage, **loop counters & event flags**, stopwatch, difficulty, artifacts/rules (`RuleBook`), team experience, survivor loadout, gold, void coins, permanent items and **DLC3 temporary items** (stored by **item name** for mod-order safety), equipment slots/sets, and owned drones/allies. |
+| 🔍 **Mod-List & Missing Survivor Protection** | Checks your active BepInEx plugin list against checkpoint metadata, flags uninstalled modded survivors with a **Missing Mod** badge/warning, and safely locks the Load button until the survivor mod is restored. |
+| 🎮 **Mouse, Keyboard & Controller** | Full standard UI navigation with **auto-scrolling slot cards**, quick lobby shortcut (`Y` on Xbox / `Triangle` on PlayStation) with controller-aware glyphs, and instant close via `ESC` or `B` / `Circle`. |
 | 🌐 **Built-in EN & pt-BR Localization** | Follows the game language automatically (`CENIRELOAD_*` keys), with optional external JSON overrides in `BepInEx/plugins/CENI_RELOAD/Language/<lang>/ceni_reload.json`. |
 
 ### 📦 Installation
@@ -75,7 +75,7 @@ Just like Rogério Ceni saved São Paulo on the pitch, **C.E.N.I RELOAD** saves 
 
 ### 🎯 Visão Geral
 
-O **C.E.N.I RELOAD** (`Jaosnake-CENI_RELOAD`) grava automaticamente o estado completo da sua partida no início de cada fase jogável e adiciona o **Cofre CENI RELOAD** direto na tela de Seleção de Personagem para você visualizar, inspecionar, carregar ou limpar seus checkpoints quando quiser.
+O **C.E.N.I RELOAD** (`Jaosnake-CENI_RELOAD`) grava automaticamente o estado completo da sua partida no início de cada fase jogável e adiciona o **Cofre CENI RELOAD** tanto no **Menu Principal** quanto na tela de **Seleção de Personagem** para você visualizar, inspecionar, carregar ou limpar seus checkpoints quando quiser.
 
 ### ⚽ O que significa C.E.N.I?
 
@@ -96,10 +96,10 @@ Assim como o Rogério Ceni salvava o São Paulo em campo, o **C.E.N.I RELOAD** s
 | 🛠️ **Arquitetura 100% Autoral** | Escrito do zero em C# (`netstandard2.1`) em `Jaosnake.CeniReload` usando apenas HarmonyX — dependência única (`bbepis-BepInExPack-5.4.2121`). |
 | 💾 **Checkpoints Automáticos por Fase** | Registra automaticamente um snapshot completo no início de cada fase jogável. |
 | 🗂️ **5 Slots Rotativos por Sobrevivente** | Armazena até **5 slots independentes em `.cenireload.json`** por sobrevivente e perfil, substituindo automaticamente o slot mais antigo quando os cinco estiverem cheios. |
-| 🃏 **Interface de Cofre em Duas Colunas** | Abra o **COFRE CENI RELOAD** no lobby para navegar pelos cards visuais dos slots (com filtro *Sobrevivente Atual* / *Todos*), ver os detalhes completos no painel direito, carregar checkpoints ou excluir slots com confirmação integrada. |
-| 🛡️ **Preservação Completa da Partida** | Salva seed, fase, cronômetro, dificuldade, artefatos/regras (`RuleBook`), experiência do time, loadout, ouro, moedas do vazio, itens permanentes (salvos pelo **nome do item** para segurança entre mods), equipamentos e drones/aliados. |
-| 🔍 **Verificação da Lista de Mods** | Compara os plugins ativos do BepInEx com os do checkpoint e avisa diretamente no inspetor se houve mudança. |
-| 🎮 **Mouse, Teclado e Controle** | Navegação padrão completa e fechamento rápido com `ESC` ou botão `B` / `Círculo`. |
+| 🃏 **Interface de Cofre em Duas Colunas** | Abra o **COFRE CENI RELOAD** direto no **Menu Principal** ou no **lobby de Seleção de Personagem** para navegar pelos cards visuais com **retratos dos sobreviventes** (filtro *Sobrevivente Atual* / *Todos*), ver os detalhes completos no painel direito, carregar checkpoints ou excluir slots com confirmação integrada. |
+| 🛡️ **Preservação Completa da Partida** | Salva seed, fase, **contadores de loop e flags de evento**, cronômetro, dificuldade, artefatos/regras (`RuleBook`), experiência do time, loadout, ouro, moedas do vazio, itens permanentes e **itens temporários da DLC3** (salvos pelo **nome do item** para segurança entre mods), equipamentos e drones/aliados. |
+| 🔍 **Verificação de Mods e Sobrevivente Ausente** | Compara os plugins ativos do BepInEx com o checkpoint, identifica sobreviventes de mods removidos com aviso **Mod Ausente** e trava o botão de carregar com segurança até o mod ser reinstalado. |
+| 🎮 **Mouse, Teclado e Controle** | Navegação padrão completa com **auto-scroll na lista de cards**, atalho rápido no lobby (`Y` no Xbox / `Triângulo` no PlayStation) com ícone dinâmico do controle e fechamento rápido com `ESC` ou `B` / `Círculo`. |
 | 🌐 **Localização Nativa EN e pt-BR** | Segue automaticamente o idioma do jogo (chaves `CENIRELOAD_*`), com suporte opcional a JSON externo em `BepInEx/plugins/CENI_RELOAD/Language/<idioma>/ceni_reload.json`. |
 
 ### 📦 Instalação

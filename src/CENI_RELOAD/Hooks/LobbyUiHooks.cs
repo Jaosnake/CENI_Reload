@@ -1,6 +1,8 @@
 using HarmonyLib;
+using Jaosnake.CeniReload.Core;
 using Jaosnake.CeniReload.UI;
 using RoR2.UI;
+using RoR2.UI.MainMenu;
 
 namespace Jaosnake.CeniReload.Hooks
 {
@@ -12,7 +14,7 @@ namespace Jaosnake.CeniReload.Hooks
         private static void OnCharacterSelectAwake(CharacterSelectController __instance)
         {
             if (__instance == null) return;
-            CeniReloadVaultController.AttachTo(__instance);
+            CeniReloadVaultController.AttachToLobby(__instance);
         }
 
         [HarmonyPostfix]
@@ -20,8 +22,17 @@ namespace Jaosnake.CeniReload.Hooks
         private static void OnCharacterSelectEnable(CharacterSelectController __instance)
         {
             if (__instance == null) return;
-            var vault = CeniReloadVaultController.AttachTo(__instance);
+            var vault = CeniReloadVaultController.AttachToLobby(__instance);
             vault?.RefreshTriggerLabel();
+        }
+
+        [HarmonyPostfix]
+        [HarmonyPatch(typeof(MainMenuController), "Start")]
+        private static void OnMainMenuStart(MainMenuController __instance)
+        {
+            SnapshotRestore.ClearPending();
+            if (__instance == null) return;
+            CeniReloadVaultController.AttachToMainMenu(__instance);
         }
     }
 }

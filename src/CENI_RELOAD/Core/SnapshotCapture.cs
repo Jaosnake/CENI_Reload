@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using BepInEx.Bootstrap;
+using HarmonyLib;
 using Jaosnake.CeniReload.Model;
 using Jaosnake.CeniReload.Storage;
 using RoR2;
@@ -11,6 +13,8 @@ namespace Jaosnake.CeniReload.Core
 {
     public static class SnapshotCapture
     {
+        private static readonly FieldInfo EventFlagsField = AccessTools.Field(typeof(Run), "eventFlags");
+
         public static CheckpointSnapshot CaptureCurrentRun()
         {
             var run = Run.instance;
@@ -28,6 +32,8 @@ namespace Jaosnake.CeniReload.Core
                 stageSceneName = sceneDef.baseSceneName,
                 stageDisplayToken = sceneDef.nameToken,
                 stageClearCount = run.stageClearCount,
+                loopClearCount = run.loopClearCount,
+                stageClearCountAtLoopStart = run.NetworkstageClearCountAtLoopStart,
                 runFixedTime = run.GetRunStopwatch(),
                 seed = run.seed,
                 shopPortalCount = run.shopPortalCount,
@@ -36,6 +42,17 @@ namespace Jaosnake.CeniReload.Core
                     ? TeamManager.instance.GetTeamExperience(TeamIndex.Player)
                     : 0UL
             };
+
+            if (EventFlagsField?.GetValue(run) is HashSet<string> flags)
+            {
+                foreach (string flag in flags)
+                {
+                    if (!string.IsNullOrEmpty(flag))
+                    {
+                        snapshot.eventFlags.Add(flag);
+                    }
+                }
+            }
 
             var diffDef = DifficultyCatalog.GetDifficultyDef(run.selectedDifficulty);
             snapshot.difficultyName = run.selectedDifficulty.ToString();
@@ -67,13 +84,16 @@ namespace Jaosnake.CeniReload.Core
             if (snapshot.players.Count == 0 || string.IsNullOrEmpty(snapshot.survivorBodyName))
                 return null;
 
-            foreach (var kv in Chainloader.PluginInfos)
+            if (Chainloader.PluginInfos != null)
             {
-                snapshot.loadedPlugins.Add(new PluginStamp
+                foreach (var kv in Chainloader.PluginInfos)
                 {
-                    guid = kv.Key,
-                    version = kv.Value?.Metadata?.Version?.ToString() ?? string.Empty
-                });
+                    snapshot.loadedPlugins.Add(new PluginStamp
+                    {
+                        guid = kv.Key,
+                        version = kv.Value?.Metadata?.Version?.ToString() ?? string.Empty
+                    });
+                }
             }
 
             return snapshot;
@@ -99,7 +119,7 @@ namespace Jaosnake.CeniReload.Core
                 player.infusionBonus = master.inventory.infusionBonus;
                 player.activeEquipmentSlot = master.inventory.activeEquipmentSlot;
                 player.activeEquipmentSet = (int)master.inventory.GetActiveEquipmentSetInSlot(master.inventory.activeEquipmentSlot);
-                CaptureInventory(master.inventory, player.items, player.equipments);
+                CaptureInventory(master.inventory, player.items, player.tempItems, player.equipments);
             }
 
             var allMasters = CharacterMaster.readOnlyInstancesList;
@@ -125,7 +145,7 @@ namespace Jaosnake.CeniReload.Core
 
                 if (candidate.inventory != null)
                 {
-                    CaptureInventory(candidate.inventory, minionSnap.items, minionSnap.equipments);
+                    CaptureInventory(candidate.inventory, minionSnap.items, minionSnap.tempItems, minionSnap.equipments);
                 }
 
                 player.minions.Add(minionSnap);
@@ -134,25 +154,55 @@ namespace Jaosnake.CeniReload.Core
             return player;
         }
 
-        private static void CaptureInventory(Inventory inventory, List<ItemEntry> itemsOut, List<EquipmentEntry> equipOut)
+        private static void CaptureInventory(Inventory inventory, List<ItemEntry> itemsOut, List<TempItemEntry> tempItemsOut, List<EquipmentEntry> equipOut)
         {
             if (inventory == null) return;
 
             var order = inventory.itemAcquisitionOrder;
-            for (int i = 0; i < order.Count; i++)
+            if (order != null)
             {
-                var idx = order[i];
-                int count = inventory.GetItemCountPermanent(idx);
-                if (count <= 0) continue;
-
-                var def = ItemCatalog.GetItemDef(idx);
-                if (def == null || string.IsNullOrEmpty(def.name)) continue;
-
-                itemsOut.Add(new ItemEntry
+                var seenPermanent = new HashSet<ItemIndex>();
+                for (int i = 0; i < order.Count; i++)
                 {
-                    itemName = def.name,
-                    count = count
-                });
+                    var idx = order[i];
+                    if (idx == ItemIndex.None || !seenPermanent.Add(idx)) continue;
+
+                    int count = inventory.GetItemCountPermanent(idx);
+                    if (count <= 0) continue;
+
+                    var def = ItemCatalog.GetItemDef(idx);
+                    if (def == null || string.IsNullOrEmpty(def.name)) continue;
+
+                    itemsOut.Add(new ItemEntry
+                    {
+                        itemName = def.name,
+                        count = count
+                    });
+                }
+            }
+
+            if (tempItemsOut != null)
+            {
+                var seenTempNames = new HashSet<string>(StringComparer.Ordinal);
+                int itemCount = ItemCatalog.itemCount;
+                for (int i = 0; i < itemCount; i++)
+                {
+                    var idx = (ItemIndex)i;
+                    if (idx == ItemIndex.None) continue;
+
+                    float raw = inventory.GetTempItemRawValue(idx);
+                    if (float.IsNaN(raw) || float.IsInfinity(raw) || raw <= 0.001f) continue;
+
+                    var def = ItemCatalog.GetItemDef(idx);
+                    if (def == null || string.IsNullOrEmpty(def.name)) continue;
+                    if (!seenTempNames.Add(def.name)) continue;
+
+                    tempItemsOut.Add(new TempItemEntry
+                    {
+                        itemName = def.name,
+                        rawValue = raw
+                    });
+                }
             }
 
             int slotCount = inventory.GetEquipmentSlotCount();

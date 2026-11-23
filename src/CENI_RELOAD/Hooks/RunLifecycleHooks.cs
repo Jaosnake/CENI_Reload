@@ -12,6 +12,16 @@ namespace Jaosnake.CeniReload.Hooks
     [HarmonyPatch]
     public static class RunLifecycleHooks
     {
+        [HarmonyPostfix]
+        [HarmonyPatch(typeof(PreGameController), "Start")]
+        private static void OnPreGameStartPostfix(PreGameController __instance)
+        {
+            if (SnapshotRestore.AutoLaunchOnPreGame && __instance != null)
+            {
+                __instance.StartCoroutine(SnapshotRestore.TryAutoLaunchFromPreGame(__instance));
+            }
+        }
+
         [HarmonyPrefix]
         [HarmonyPatch(typeof(Run), "Start")]
         private static void OnRunStartPrefix(Run __instance)
