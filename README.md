@@ -135,3 +135,7 @@ Assim como o Rogério Ceni salvava o São Paulo em campo, o **C.E.N.I RELOAD** s
 
 - 💻 **Repositório Oficial**: [https://github.com/Jaosnake/CENI_Reload](https://github.com/Jaosnake/CENI_Reload)
 - ⚖️ **Licença**: **Licença MIT** — Copyright (c) 2026 **Jaosnake**. Consulte [LICENSE](LICENSE).
+
+---
+
+<p align="center"><strong>💡 IDEAS HAVE NO COPYRIGHT • IDEIAS NÃO TÊM COPYRIGHT 💡</strong></p>
