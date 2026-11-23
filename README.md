@@ -1,105 +1,115 @@
-# CENI_RELOAD — Checkpoint Vault
+# 🧤 CENI_RELOAD — Checkpoint Vault
 
-> **100% Written From Scratch (Original Standalone Project)**  
-> **CENI_RELOAD** is a completely original stage checkpoint system for **Risk of Rain 2**, designed and implemented **100% from scratch** by **Jaosnake** under the **MIT License**. It contains zero third-party mod code, uses its own standalone HarmonyX architecture (`Jaosnake.CeniReload`), its own `.cenireload.json` storage format, its own two-column card-based Vault interface, and requires only `BepInExPack`.
+> ✨ **100% Written From Scratch — Original Standalone Project**  
+> **CENI_RELOAD** is a completely original stage checkpoint vault for **Risk of Rain 2**, designed and built **100% from scratch** by **Jaosnake** under the **MIT License**.  
+> Zero third-party mod code • Standalone HarmonyX (`Jaosnake.CeniReload`) • Single dependency (`BepInExPack`) • Custom `.cenireload.json` format • Redesigned two-column Card Vault UI.
+
+[🇺🇸 English](#-english) • [🇧🇷 Português (Brasil)](#-português-brasil) • [⚽ Why the name CENI?](#-why-the-name-ceni)
 
 ---
 
-## English
+## 🇺🇸 English
 
-### Overview
+### 🎯 Overview
 
-**CENI_RELOAD** automatically saves run checkpoints at the start of every gameplay stage and gives you a dedicated **Checkpoint Vault** directly inside the Character Select lobby to inspect, load, or clear your saved runs.
+**CENI_RELOAD** automatically records a full run checkpoint at the start of every playable stage and adds a sleek **Checkpoint Vault** directly inside the Character Select lobby so you can browse, inspect, load, or clear your saved runs anytime.
 
-### Key Features
+### ⚽ Why the name CENI?
 
-- **100% Original Architecture**: Built from the ground up in C# (`netstandard2.1`) under `Jaosnake.CeniReload` using HarmonyX only — single dependency (`bbepis-BepInExPack-5.4.2121`).
-- **Automatic Stage Checkpoints**: Captures a full run snapshot at the start of every playable stage.
-- **5 Rotating Slots per Survivor**: Stores up to five independent `.cenireload.json` slots per survivor and user profile, automatically rotating the oldest slot when all five are filled.
-- **Two-Column Card Vault UI**:
-  - Open **CENI RELOAD VAULT** from the Character Select lobby.
-  - Browse visual slot cards on the left with status accent strips and a filter toggle (*Current Survivor* / *All Survivors*).
-  - Inspect full run stats on the right (Stage, Stage #, Run Time, Difficulty, Gold / Void Coins, Items / Allies, Saved Date, and Mod Compatibility status).
-  - Load any checkpoint or clear slots using the built-in inline confirmation bar.
-- **Resilient State Preservation**: Saves run seed, stage, stopwatch, difficulty, artifacts/rules (`RuleBook`), team experience, survivor loadout, gold, void coins, permanent items (stored by **item name** for load-order safety), equipment slots/sets, and owned drones/allies.
-- **Mod-List Verification**: Alerts you in the inspector if your installed BepInEx plugins changed since the checkpoint was created.
-- **Mouse, Keyboard & Controller Navigation**: Standard UI navigation plus quick close via `ESC` or controller `B` / `Circle`.
-- **Built-in EN & pt-BR Localization**: Follows the in-game language automatically (`CENIRELOAD_*` keys), with optional external JSON overrides in `BepInEx/plugins/CENI_RELOAD/Language/<lang>/ceni_reload.json`.
+The name **C.E.N.I** is a playful tribute to legendary Brazilian goalkeeper **Rogério Ceni**, iconic captain of **São Paulo FC** — famous for always **"saving"** his team with miraculous stops when it mattered most! 🧤🇧🇷  
+Just like Ceni saved São Paulo on the pitch, **CENI_RELOAD** saves your runs on Petrichor V! *(And yes, that's why the icon features the Brazilian flag cape and the golden trophy!)* 🏆
 
-### Installation
+### 🚀 Key Features
+
+| Feature | Description |
+| :--- | :--- |
+| 🛠️ **100% Original Architecture** | Built from the ground up in C# (`netstandard2.1`) under `Jaosnake.CeniReload` using HarmonyX only — single dependency (`bbepis-BepInExPack-5.4.2121`). |
+| 💾 **Automatic Stage Checkpoints** | Automatically captures a full snapshot at the start of every gameplay stage. |
+| 🗂️ **5 Rotating Slots per Survivor** | Stores up to **5 independent `.cenireload.json` slots** per survivor and profile, automatically rotating the oldest slot when full. |
+| 🃏 **Redesigned Two-Column Vault UI** | Open **CENI RELOAD VAULT** from the lobby to browse visual slot cards (with *Current Survivor* / *All Survivors* filter), inspect detailed stats on the right, load checkpoints, or delete slots with inline confirmation. |
+| 🛡️ **Complete State Preservation** | Saves run seed, stage, stopwatch, difficulty, artifacts/rules (`RuleBook`), team experience, survivor loadout, gold, void coins, permanent items (stored by **item name** for mod-order safety), equipment slots/sets, and owned drones/allies. |
+| 🔍 **Mod-List Verification** | Checks your active BepInEx plugin list against the checkpoint metadata and highlights any mismatch right inside the inspector. |
+| 🎮 **Mouse, Keyboard & Controller** | Full standard UI navigation plus instant close via `ESC` or controller `B` / `Circle`. |
+| 🌐 **Built-in EN & pt-BR Localization** | Follows the game language automatically (`CENIRELOAD_*` keys), with optional external JSON overrides in `BepInEx/plugins/CENI_RELOAD/Language/<lang>/ceni_reload.json`. |
+
+### 📦 Installation
 
 **Via Thunderstore Mod Manager / r2modman (Recommended):**
 1. Install `bbepis-BepInExPack`.
 2. Install `Jaosnake-CENI_RELOAD`.
-3. Launch the game.
+3. Launch Risk of Rain 2 and open **CENI RELOAD VAULT** in the Character Select lobby!
 
 **Manual Installation:**
-1. Extract the package into `BepInEx/plugins/CENI_RELOAD/` (ensuring `CENI_RELOAD.dll` is inside `BepInEx/plugins/`).
+1. Extract the ZIP into `BepInEx/plugins/CENI_RELOAD/` (keeping `CENI_RELOAD.dll` inside `BepInEx/plugins/`).
 2. Launch Risk of Rain 2.
 
-### Configuration & Storage Paths
+### ⚙️ Configuration & Storage
 
 - **Config file**: `BepInEx/config/com.Jaosnake.CENI_RELOAD.cfg`
-  - `AutoSaveOnStageStart` (`true` by default): Automatically saves a checkpoint at the start of each gameplay stage.
-  - `ShowChatMessages` (`true` by default): Displays a chat notification when a checkpoint is saved or restored.
-- **Checkpoint files**:
+  - `AutoSaveOnStageStart` *(default: `true`)* — Automatically saves a checkpoint at the start of every playable stage.
+  - `ShowChatMessages` *(default: `true`)* — Prints a chat notification when a checkpoint is saved or restored.
+- **Checkpoint Vault directory**:
   ```text
   BepInEx/config/Jaosnake.CENI_RELOAD/Vault/<profile>/<survivor>/slot_<1..5>.cenireload.json
   ```
 
-### Source Code & License
+### 📜 Source Code & License
 
-- **Source Repository**: [https://github.com/Jaosnake/CENI_Reload](https://github.com/Jaosnake/CENI_Reload)
-- **License**: **MIT License** — Copyright (c) 2026 Jaosnake. See [LICENSE](LICENSE).
+- 💻 **Official Repository**: [https://github.com/Jaosnake/CENI_Reload](https://github.com/Jaosnake/CENI_Reload)
+- ⚖️ **License**: **MIT License** — Copyright (c) 2026 **Jaosnake**. See [LICENSE](LICENSE).
 
 ---
 
-## Português (Brasil)
+## 🇧🇷 Português (Brasil)
 
-> **Projeto 100% Feito do Zero (Código-Fonte Próprio e Independente)**  
-> O **CENI_RELOAD** é um sistema de checkpoints de fase para **Risk of Rain 2** totalmente original, projetado e escrito **100% do zero** por **Jaosnake** sob a **Licença MIT**. Não reutiliza código de terceiros, possui arquitetura própria em HarmonyX (`Jaosnake.CeniReload`), formato próprio de salvamento (`.cenireload.json`), interface própria em cards de duas colunas e depende apenas do `BepInExPack`.
+> ✨ **Projeto 100% Feito do Zero — Código-Fonte Próprio e Independente**  
+> O **CENI_RELOAD** é um cofre de checkpoints de fase para **Risk of Rain 2** totalmente original, projetado e escrito **100% do zero** por **Jaosnake** sob a **Licença MIT**.  
+> Zero código de terceiros • Arquitetura própria em HarmonyX (`Jaosnake.CeniReload`) • Dependência única (`BepInExPack`) • Formato próprio `.cenireload.json` • Interface própria em cards de duas colunas.
 
-### Visão Geral
+### 🎯 Visão Geral
 
-O **CENI_RELOAD** grava checkpoints automáticos no início de cada fase jogável e adiciona o **Cofre CENI RELOAD** diretamente na tela de Seleção de Personagem para inspecionar, carregar ou limpar seus slots salvos.
+O **CENI_RELOAD** grava automaticamente o estado completo da sua partida no início de cada fase jogável e adiciona o **Cofre CENI RELOAD** direto na tela de Seleção de Personagem para você visualizar, inspecionar, carregar ou limpar seus checkpoints quando quiser.
 
-### Recursos Principais
+### ⚽ Por que o nome CENI?
 
-- **Arquitetura 100% Autoral**: Escrito do zero em C# (`netstandard2.1`) em `Jaosnake.CeniReload` usando apenas HarmonyX — dependência única (`bbepis-BepInExPack-5.4.2121`).
-- **Checkpoints Automáticos por Fase**: Registra automaticamente o estado completo da partida no início de cada fase jogável.
-- **5 Slots Rotativos por Sobrevivente**: Armazena até cinco slots independentes em `.cenireload.json` por sobrevivente e perfil, sobrescrevendo automaticamente o slot mais antigo quando os cinco estiverem ocupados.
-- **Interface de Cofre em Duas Colunas**:
-  - Abra o **COFRE CENI RELOAD** direto na tela de Seleção de Personagem.
-  - Navegue pelos cards visuais dos slots à esquerda, com barra lateral de status e botão de filtro (*Sobrevivente Atual* / *Todos*).
-  - Veja todos os detalhes da partida à direita (Fase, Nº da Fase, Tempo, Dificuldade, Ouro / Moedas do Vazio, Itens / Aliados, Data e compatibilidade da lista de mods).
-  - Carregue qualquer checkpoint ou exclua slots com confirmação integrada diretamente no painel.
-- **Preservação Completa da Partida**: Salva seed, fase, cronômetro, dificuldade, artefatos/regras (`RuleBook`), experiência do time, loadout, ouro, moedas do vazio, itens permanentes (salvos pelo **nome do item** para maior segurança entre mods), equipamentos e drones/aliados.
-- **Verificação de Lista de Mods**: Exibe um aviso no painel de inspeção caso os plugins instalados no BepInEx tenham mudado desde o salvamento.
-- **Suporte a Mouse, Teclado e Controle**: Navegação padrão e fechamento rápido via `ESC` ou botão `B` / `Círculo`.
-- **Localização Nativa em EN e pt-BR**: Segue automaticamente o idioma do jogo (chaves `CENIRELOAD_*`), com suporte opcional a arquivos JSON externos em `BepInEx/plugins/CENI_RELOAD/Language/<idioma>/ceni_reload.json`.
+O nome **C.E.N.I** é uma homenagem bem-humorada ao lendário goleiro brasileiro **Rogério Ceni**, eterno ídolo do **São Paulo FC** — famoso por sempre **"salvar"** o time nos momentos mais difíceis! 🧤🇧🇷  
+Assim como o Ceni salvava o São Paulo em campo, o **CENI_RELOAD** salva as suas runs em Petrichor V! *(E é por isso que o ícone traz a capa da bandeira do Brasil e a taça dourada!)* 🏆
 
-### Instalação
+### 🚀 Recursos Principais
+
+| Recurso | Descrição |
+| :--- | :--- |
+| 🛠️ **Arquitetura 100% Autoral** | Escrito do zero em C# (`netstandard2.1`) em `Jaosnake.CeniReload` usando apenas HarmonyX — dependência única (`bbepis-BepInExPack-5.4.2121`). |
+| 💾 **Checkpoints Automáticos por Fase** | Registra automaticamente um snapshot completo no início de cada fase jogável. |
+| 🗂️ **5 Slots Rotativos por Sobrevivente** | Armazena até **5 slots independentes em `.cenireload.json`** por sobrevivente e perfil, substituindo automaticamente o slot mais antigo quando os cinco estiverem cheios. |
+| 🃏 **Interface de Cofre em Duas Colunas** | Abra o **COFRE CENI RELOAD** no lobby para navegar pelos cards visuais dos slots (com filtro *Sobrevivente Atual* / *Todos*), ver os detalhes completos no painel direito, carregar checkpoints ou excluir slots com confirmação integrada. |
+| 🛡️ **Preservação Completa da Partida** | Salva seed, fase, cronômetro, dificuldade, artefatos/regras (`RuleBook`), experiência do time, loadout, ouro, moedas do vazio, itens permanentes (salvos pelo **nome do item** para segurança entre mods), equipamentos e drones/aliados. |
+| 🔍 **Verificação da Lista de Mods** | Compara os plugins ativos do BepInEx com os do checkpoint e avisa diretamente no inspetor se houve mudança. |
+| 🎮 **Mouse, Teclado e Controle** | Navegação padrão completa e fechamento rápido com `ESC` ou botão `B` / `Círculo`. |
+| 🌐 **Localização Nativa EN e pt-BR** | Segue automaticamente o idioma do jogo (chaves `CENIRELOAD_*`), com suporte opcional a JSON externo em `BepInEx/plugins/CENI_RELOAD/Language/<idioma>/ceni_reload.json`. |
+
+### 📦 Instalação
 
 **Via Thunderstore Mod Manager / r2modman (Recomendado):**
 1. Instale `bbepis-BepInExPack`.
 2. Instale `Jaosnake-CENI_RELOAD`.
-3. Inicie o jogo.
+3. Inicie o Risk of Rain 2 e clique em **COFRE CENI RELOAD** na tela de Seleção de Personagem!
 
 **Instalação Manual:**
-1. Extraia o pacote em `BepInEx/plugins/CENI_RELOAD/` (mantendo `CENI_RELOAD.dll` dentro de `BepInEx/plugins/`).
+1. Extraia o ZIP em `BepInEx/plugins/CENI_RELOAD/` (mantendo `CENI_RELOAD.dll` dentro de `BepInEx/plugins/`).
 2. Inicie o Risk of Rain 2.
 
-### Configuração e Caminhos de Salvamento
+### ⚙️ Configuração e Armazenamento
 
 - **Arquivo de configuração**: `BepInEx/config/com.Jaosnake.CENI_RELOAD.cfg`
-  - `AutoSaveOnStageStart` (padrão `true`): Salva automaticamente um checkpoint no início de cada fase jogável.
-  - `ShowChatMessages` (padrão `true`): Exibe aviso no chat sempre que um checkpoint é salvo ou restaurado.
-- **Arquivos de checkpoint**:
+  - `AutoSaveOnStageStart` *(padrão: `true`)* — Salva automaticamente um checkpoint no início de cada fase jogável.
+  - `ShowChatMessages` *(padrão: `true`)* — Mostra um aviso no chat sempre que um checkpoint é salvo ou restaurado.
+- **Pasta do Cofre de Checkpoints**:
   ```text
   BepInEx/config/Jaosnake.CENI_RELOAD/Vault/<perfil>/<sobrevivente>/slot_<1..5>.cenireload.json
   ```
 
-### Código-Fonte e Licença
+### 📜 Código-Fonte e Licença
 
-- **Repositório Oficial**: [https://github.com/Jaosnake/CENI_Reload](https://github.com/Jaosnake/CENI_Reload)
-- **Licença**: **Licença MIT** — Copyright (c) 2026 Jaosnake. Consulte [LICENSE](LICENSE).
+- 💻 **Repositório Oficial**: [https://github.com/Jaosnake/CENI_Reload](https://github.com/Jaosnake/CENI_Reload)
+- ⚖️ **Licença**: **Licença MIT** — Copyright (c) 2026 **Jaosnake**. Consulte [LICENSE](LICENSE).
