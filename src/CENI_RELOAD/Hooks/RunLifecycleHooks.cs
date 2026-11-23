@@ -87,8 +87,10 @@ namespace Jaosnake.CeniReload.Hooks
 
             if (stage == null || Run.instance == null || !NetworkServer.active) yield break;
 
-            // Never auto-save Stage 1 (stageClearCount == 0): players often enter Stage 1 to test survivors, mods, or artifacts.
-            if (Run.instance.stageClearCount < 1) yield break;
+            // Never auto-save initial Stage 1 (stageClearCount == 0 && loopClearCount == 0):
+            // players often start Stage 1 to test survivors, mods, or artifacts.
+            // On Loop 1+ (Stage 6+), both stageClearCount (>= 5) and loopClearCount (>= 1) stay > 0, so loops ALWAYS save.
+            if (Run.instance.stageClearCount < 1 && Run.instance.loopClearCount < 1) yield break;
 
             var sceneDef = SceneCatalog.GetSceneDefForCurrentScene();
             if (sceneDef == null || sceneDef.sceneType != SceneType.Stage) yield break;
