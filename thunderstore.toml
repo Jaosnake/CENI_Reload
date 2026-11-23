@@ -1,0 +1,37 @@
+[config]
+schemaVersion = "0.0.1"
+
+[package]
+namespace = "Jaosnake"
+name = "CENI_RELOAD"
+versionNumber = "1.0.0"
+description = "100% written-from-scratch stage checkpoint vault for Risk of Rain 2 with 5 slots per survivor, card-based UI, controller navigation, and EN/pt-BR localization."
+websiteUrl = "https://github.com/Jaosnake/CENI_Reload"
+containsNsfwContent = false
+
+[package.dependencies]
+bbepis-BepInExPack = "5.4.2121"
+
+[build]
+icon = "./icon.png"
+readme = "./README.md"
+outdir = "./dist"
+
+[[build.copy]]
+source = "./src/CENI_RELOAD/bin/Release/netstandard2.1/CENI_RELOAD.dll"
+target = "./plugins/CENI_RELOAD/"
+
+[[build.copy]]
+source = "./CHANGELOG.md"
+target = "./CHANGELOG.md"
+
+[[build.copy]]
+source = "./LICENSE"
+target = "./LICENSE"
+
+[publish]
+repository = "https://thunderstore.io"
+communities = ["riskofrain2"]
+
+[publish.categories]
+riskofrain2 = ["mods", "tools", "client-side"]

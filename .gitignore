@@ -1,0 +1,14 @@
+# Build artifacts
+bin/
+obj/
+dist/
+*.zip
+*.r2z
+*.pdb
+*.user
+*.suo
+.vs/
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
