@@ -13,6 +13,7 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.EventSystems;
+using UnityEngine.Networking;
 using UnityEngine.UI;
 
 namespace Jaosnake.CeniReload.UI
@@ -75,7 +76,14 @@ namespace Jaosnake.CeniReload.UI
             public VaultFocusHighlight Highlight;
         }
 
-        private bool _showAllSurvivors;
+        private enum VaultFilterMode
+        {
+            CurrentSurvivor,
+            Multiplayer,
+            All
+        }
+
+        private VaultFilterMode _filterMode = VaultFilterMode.CurrentSurvivor;
         private CheckpointSnapshot _selectedSnapshot;
         private readonly List<GameObject> _spawnedCards = new List<GameObject>();
         private readonly List<SlotCardView> _cardViews = new List<SlotCardView>();
@@ -124,7 +132,7 @@ namespace Jaosnake.CeniReload.UI
         {
             _lobby = controller;
             _isMainMenuMode = false;
-            _showAllSurvivors = false;
+            _filterMode = IsInMultiplayerLobby() ? VaultFilterMode.Multiplayer : VaultFilterMode.CurrentSurvivor;
 
             BuildLobbyTriggerButton();
             BuildVaultModal();
@@ -135,11 +143,25 @@ namespace Jaosnake.CeniReload.UI
         {
             _mainMenu = controller;
             _isMainMenuMode = true;
-            _showAllSurvivors = true;
+            _filterMode = VaultFilterMode.All;
 
             BuildMainMenuTriggerButton();
             BuildVaultModal();
             SetModalOpen(false);
+        }
+
+        private static bool IsInMultiplayerLobby()
+        {
+            return PreGameController.instance != null &&
+                   NetworkUser.readOnlyInstancesList != null &&
+                   NetworkUser.readOnlyInstancesList.Count > 1;
+        }
+
+        private bool IsLobbyHostAllowed()
+        {
+            if (_isMainMenuMode) return true;
+            if (PreGameController.instance != null && !NetworkServer.active) return false;
+            return true;
         }
 
         private void OnEnable()
@@ -210,22 +232,35 @@ namespace Jaosnake.CeniReload.UI
 
             if (!_isMainMenuMode && _triggerButton != null)
             {
-                if (!_loggedLobbyGamepadInfo && primaryEs != null && primaryEs.currentInputSource == MPEventSystem.InputSource.Gamepad)
+                bool hostAllowed = IsLobbyHostAllowed();
+                if (_triggerButton.gameObject.activeSelf != hostAllowed)
                 {
-                    _loggedLobbyGamepadInfo = true;
-                    LogLobbyGamepadDiagnostics(primaryEs);
+                    _triggerButton.gameObject.SetActive(hostAllowed);
+                    if (!hostAllowed && _modalRoot != null && _modalRoot.activeSelf)
+                    {
+                        SetModalOpen(false);
+                    }
                 }
 
-                // Gamepad shortcut in Lobby: Y (Xbox) / Triangle (PlayStation) / Top Face Button opens the Vault
-                if (_modalRoot != null && !_modalRoot.activeSelf &&
-                    Time.frameCount > _openedFrame && Time.frameCount > _closedFrame &&
-                    _triggerButton.gameObject.activeInHierarchy && IsGamepadVaultShortcutPressed(primaryEs))
+                if (hostAllowed)
                 {
-                    if (!IsLobbyBlockedByOverlay())
+                    if (!_loggedLobbyGamepadInfo && primaryEs != null && primaryEs.currentInputSource == MPEventSystem.InputSource.Gamepad)
                     {
-                        CeniReloadPlugin.Log?.LogInfo("Opening Checkpoint Vault via Lobby gamepad shortcut.");
-                        SetModalOpen(true);
-                        return;
+                        _loggedLobbyGamepadInfo = true;
+                        LogLobbyGamepadDiagnostics(primaryEs);
+                    }
+
+                    // Gamepad shortcut in Lobby: Y (Xbox) / Triangle (PlayStation) / Top Face Button opens the Vault
+                    if (_modalRoot != null && !_modalRoot.activeSelf &&
+                        Time.frameCount > _openedFrame && Time.frameCount > _closedFrame &&
+                        _triggerButton.gameObject.activeInHierarchy && IsGamepadVaultShortcutPressed(primaryEs))
+                    {
+                        if (!IsLobbyBlockedByOverlay())
+                        {
+                            CeniReloadPlugin.Log?.LogInfo("Opening Checkpoint Vault via Lobby gamepad shortcut.");
+                            SetModalOpen(true);
+                            return;
+                        }
                     }
                 }
             }
@@ -1634,6 +1669,10 @@ namespace Jaosnake.CeniReload.UI
 
                 _openedFrame = Time.frameCount;
                 _lastActionFrame = Time.frameCount;
+                if (!_isMainMenuMode && IsInMultiplayerLobby())
+                {
+                    _filterMode = VaultFilterMode.Multiplayer;
+                }
                 _modalRoot.SetActive(true);
                 if (_modalLayerKey != null) _modalLayerKey.enabled = true;
                 _modalRoot.transform.SetAsLastSibling();
@@ -1700,13 +1739,36 @@ namespace Jaosnake.CeniReload.UI
         {
             if (!CanHandleModalButtonClick()) return;
 
-            if (_isMainMenuMode && string.IsNullOrEmpty(GetSelectedSurvivorBodyName()))
+            string profileKey = VaultRepository.GetCurrentProfileKey();
+            bool hasMp = IsInMultiplayerLobby() || VaultRepository.HasAnyMultiplayerSnapshots(profileKey);
+            bool hasSurvivor = !string.IsNullOrEmpty(GetSelectedSurvivorBodyName());
+
+            if (_filterMode == VaultFilterMode.CurrentSurvivor)
             {
-                _showAllSurvivors = true;
+                _filterMode = hasMp ? VaultFilterMode.Multiplayer : VaultFilterMode.All;
+            }
+            else if (_filterMode == VaultFilterMode.Multiplayer)
+            {
+                _filterMode = VaultFilterMode.All;
             }
             else
             {
-                _showAllSurvivors = !_showAllSurvivors;
+                if (!_isMainMenuMode && IsInMultiplayerLobby())
+                {
+                    _filterMode = VaultFilterMode.Multiplayer;
+                }
+                else if (hasSurvivor)
+                {
+                    _filterMode = VaultFilterMode.CurrentSurvivor;
+                }
+                else if (hasMp)
+                {
+                    _filterMode = VaultFilterMode.Multiplayer;
+                }
+                else
+                {
+                    _filterMode = VaultFilterMode.All;
+                }
             }
 
             _selectedSnapshot = null;
@@ -1718,7 +1780,10 @@ namespace Jaosnake.CeniReload.UI
         {
             RefreshTriggerLabel();
             _titleText.text = CeniReloadStrings.Get("CENIRELOAD_UI_TITLE");
-            _subtitleText.text = CeniReloadStrings.Get("CENIRELOAD_UI_SUBTITLE");
+            string subtitleBase = CeniReloadStrings.Get("CENIRELOAD_UI_SUBTITLE");
+            _subtitleText.text = VaultRepository.IsUsingCloudStorage()
+                ? $"{subtitleBase}  •  <color=#38bdf8>[{CeniReloadStrings.Get("CENIRELOAD_UI_STORAGE_CLOUD")}]</color>"
+                : subtitleBase;
             _closeButtonLabel.text = CeniReloadStrings.Get("CENIRELOAD_UI_CLOSE");
             _loadButtonLabel.text = CeniReloadStrings.Get("CENIRELOAD_UI_BTN_LOAD");
             _deleteButtonLabel.text = CeniReloadStrings.Get("CENIRELOAD_UI_BTN_DELETE");
@@ -1727,9 +1792,18 @@ namespace Jaosnake.CeniReload.UI
             _confirmNoLabel.text = CeniReloadStrings.Get("CENIRELOAD_UI_BTN_CONFIRM_NO");
             UpdateFooterHint();
 
-            _filterButtonLabel.text = _showAllSurvivors
-                ? CeniReloadStrings.Get("CENIRELOAD_UI_FILTER_ALL")
-                : CeniReloadStrings.Format("CENIRELOAD_UI_FILTER_SURVIVOR", GetSelectedSurvivorDisplayName());
+            if (_filterMode == VaultFilterMode.All)
+            {
+                _filterButtonLabel.text = CeniReloadStrings.Get("CENIRELOAD_UI_FILTER_ALL");
+            }
+            else if (_filterMode == VaultFilterMode.Multiplayer)
+            {
+                _filterButtonLabel.text = CeniReloadStrings.Get("CENIRELOAD_UI_FILTER_MULTIPLAYER");
+            }
+            else
+            {
+                _filterButtonLabel.text = CeniReloadStrings.Format("CENIRELOAD_UI_FILTER_SURVIVOR", GetSelectedSurvivorDisplayName());
+            }
         }
 
         private void RebuildSlotCards()
@@ -1756,7 +1830,7 @@ namespace Jaosnake.CeniReload.UI
             MPButton selectedCardButton = null;
             CheckpointSnapshot firstPopulated = null;
 
-            if (_showAllSurvivors)
+            if (_filterMode == VaultFilterMode.All)
             {
                 var all = VaultRepository.GetAllProfileSnapshots(profileKey);
                 if (all.Count == 0)
@@ -1785,8 +1859,10 @@ namespace Jaosnake.CeniReload.UI
             }
             else
             {
-                string bodyName = GetSelectedSurvivorBodyName();
-                var slots = VaultRepository.GetSurvivorSlots(profileKey, bodyName);
+                string bucketKey = _filterMode == VaultFilterMode.Multiplayer
+                    ? VaultRepository.MultiplayerBucket
+                    : GetSelectedSurvivorBodyName();
+                var slots = VaultRepository.GetSurvivorSlots(profileKey, bucketKey);
 
                 if (_selectedSnapshot == null)
                 {
@@ -1854,7 +1930,8 @@ namespace Jaosnake.CeniReload.UI
         {
             if (snapshot == null) return;
             string profileKey = VaultRepository.GetCurrentProfileKey();
-            if (!VaultRepository.ToggleSlotLock(profileKey, snapshot.survivorBodyName, snapshot.slotIndex, out bool newLocked))
+            string bucketKey = snapshot.GetStorageBucket();
+            if (!VaultRepository.ToggleSlotLock(profileKey, bucketKey, snapshot.slotIndex, out bool newLocked))
             {
                 return;
             }
@@ -1920,7 +1997,11 @@ namespace Jaosnake.CeniReload.UI
             bool isMpContext = false;
             bool isSpecialContext = false;
 
-            if (_selectedSnapshot != null)
+            if (_filterMode == VaultFilterMode.Multiplayer)
+            {
+                isMpContext = true;
+            }
+            else if (_selectedSnapshot != null)
             {
                 isMpContext = _selectedSnapshot.IsMultiplayer();
                 isSpecialContext = !isMpContext && _selectedSnapshot.IsSpecialModeOrArtifact();
@@ -1948,19 +2029,23 @@ namespace Jaosnake.CeniReload.UI
             if (_allLockedWarningBanner == null || _allLockedWarningText == null) return;
 
             string profileKey = VaultRepository.GetCurrentProfileKey();
-            string checkBody = _selectedSnapshot != null
-                ? _selectedSnapshot.survivorBodyName
-                : (!_showAllSurvivors ? GetSelectedSurvivorBodyName() : string.Empty);
+            string checkBucket = _selectedSnapshot != null
+                ? _selectedSnapshot.GetStorageBucket()
+                : (_filterMode == VaultFilterMode.Multiplayer
+                    ? VaultRepository.MultiplayerBucket
+                    : (_filterMode == VaultFilterMode.CurrentSurvivor ? GetSelectedSurvivorBodyName() : string.Empty));
 
-            bool allLocked = !string.IsNullOrEmpty(checkBody) && VaultRepository.AreAllSlotsLocked(profileKey, checkBody);
+            bool allLocked = !string.IsNullOrEmpty(checkBucket) && VaultRepository.AreAllSlotsLocked(profileKey, checkBucket);
             _allLockedWarningBanner.SetActive(allLocked);
 
             if (allLocked)
             {
-                string survName = _selectedSnapshot != null
-                    ? CeniReloadStrings.LocalizeGameToken(_selectedSnapshot.survivorDisplayToken, _selectedSnapshot.survivorBodyName)
-                    : GetSelectedSurvivorDisplayName();
-                _allLockedWarningText.text = CeniReloadStrings.Format("CENIRELOAD_UI_ALL_LOCKED_WARN", survName);
+                string displayLabel = string.Equals(checkBucket, VaultRepository.MultiplayerBucket, StringComparison.OrdinalIgnoreCase)
+                    ? "Multiplayer"
+                    : (_selectedSnapshot != null
+                        ? CeniReloadStrings.LocalizeGameToken(_selectedSnapshot.survivorDisplayToken, _selectedSnapshot.survivorBodyName)
+                        : GetSelectedSurvivorDisplayName());
+                _allLockedWarningText.text = CeniReloadStrings.Format("CENIRELOAD_UI_ALL_LOCKED_WARN", displayLabel);
             }
 
             float bottomOffset = allLocked ? 72f : 40f;
@@ -2166,13 +2251,13 @@ namespace Jaosnake.CeniReload.UI
         {
             if (a == null || b == null) return false;
             return a.slotIndex == b.slotIndex &&
-                   string.Equals(a.survivorBodyName, b.survivorBodyName, StringComparison.Ordinal);
+                   string.Equals(a.GetStorageBucket(), b.GetStorageBucket(), StringComparison.OrdinalIgnoreCase);
         }
 
         private bool IsSnapshotStillValid(CheckpointSnapshot snap, string profileKey)
         {
             if (snap == null) return false;
-            return VaultRepository.LoadSlot(profileKey, snap.survivorBodyName, snap.slotIndex) != null;
+            return VaultRepository.LoadSlot(profileKey, snap.GetStorageBucket(), snap.slotIndex) != null;
         }
 
         private void CreateEmptyNoticeCard()
@@ -2428,8 +2513,11 @@ namespace Jaosnake.CeniReload.UI
             string waveLine = s.simulacrumWaveIndex > 0
                 ? $"<b>{CeniReloadStrings.Get("CENIRELOAD_UI_LABEL_WAVE")}:</b> {s.simulacrumWaveIndex}\n"
                 : string.Empty;
+            string playersRosterLine = BuildMultiplayerRosterText(s);
 
-            _inspectorTitle.text = $"{CeniReloadStrings.Format("CENIRELOAD_UI_SLOT_LABEL", s.slotIndex)} — {survName}";
+            _inspectorTitle.text = s.IsMultiplayer()
+                ? $"{CeniReloadStrings.Format("CENIRELOAD_UI_SLOT_LABEL", s.slotIndex)} — MP ({s.players.Count}P)"
+                : $"{CeniReloadStrings.Format("CENIRELOAD_UI_SLOT_LABEL", s.slotIndex)} — {survName}";
             _inspectorBody.text =
                 $"<b>{CeniReloadStrings.Get("CENIRELOAD_UI_LABEL_STAGE")}:</b> <color=#38bdf8>{stageName}</color>\n" +
                 $"<b>{CeniReloadStrings.Get("CENIRELOAD_UI_LABEL_STAGE_NUM")}:</b> {s.stageClearCount + 1}\n" +
@@ -2439,7 +2527,8 @@ namespace Jaosnake.CeniReload.UI
                 $"<b>{CeniReloadStrings.Get("CENIRELOAD_UI_LABEL_DIFFICULTY")}:</b> {diffName}\n" +
                 $"<b>{CeniReloadStrings.Get("CENIRELOAD_UI_LABEL_GOLD")}:</b> ${gold} / {voidCoins}\n" +
                 $"<b>{CeniReloadStrings.Get("CENIRELOAD_UI_LABEL_ITEMS")}:</b> {s.GetTotalItemCount()}{tempSuffix} / {s.GetTotalMinionCount()}\n" +
-                $"<b>{CeniReloadStrings.Get("CENIRELOAD_UI_LABEL_SAVED_AT")}:</b> {s.FormatSavedDate()}";
+                $"<b>{CeniReloadStrings.Get("CENIRELOAD_UI_LABEL_SAVED_AT")}:</b> {s.FormatSavedDate()}" +
+                playersRosterLine;
 
             if (missingSurvivor)
             {
@@ -2522,12 +2611,53 @@ namespace Jaosnake.CeniReload.UI
             }
         }
 
+        private string BuildMultiplayerRosterText(CheckpointSnapshot snap)
+        {
+            if (snap == null || !snap.IsMultiplayer() || snap.players == null || snap.players.Count == 0)
+                return string.Empty;
+
+            var lobbyIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            bool hasLobby = !_isMainMenuMode && NetworkUser.readOnlyInstancesList != null && NetworkUser.readOnlyInstancesList.Count > 0;
+            if (hasLobby)
+            {
+                for (int i = 0; i < NetworkUser.readOnlyInstancesList.Count; i++)
+                {
+                    string id = SnapshotCapture.BuildPlayerIdentity(NetworkUser.readOnlyInstancesList[i]);
+                    if (!string.IsNullOrEmpty(id)) lobbyIds.Add(id);
+                }
+            }
+
+            var sb = new System.Text.StringBuilder();
+            sb.Append($"\n<b>{CeniReloadStrings.Get("CENIRELOAD_UI_LABEL_PLAYERS")}:</b> ");
+            for (int i = 0; i < snap.players.Count; i++)
+            {
+                var p = snap.players[i];
+                if (p == null) continue;
+                if (i > 0) sb.Append(", ");
+
+                string pName = !string.IsNullOrEmpty(p.playerName) ? p.playerName : $"P{i + 1}";
+                if (hasLobby && !string.IsNullOrEmpty(p.playerId))
+                {
+                    bool present = lobbyIds.Contains(p.playerId);
+                    string badge = present
+                        ? $"<color=#4ade80>{pName}</color>"
+                        : $"<color=#f87171>{pName} ({CeniReloadStrings.Get("CENIRELOAD_UI_PLAYER_ABSENT")})</color>";
+                    sb.Append(badge);
+                }
+                else
+                {
+                    sb.Append(pName);
+                }
+            }
+            return sb.ToString();
+        }
+
         private void OnConfirmDeleteSelected()
         {
             if (!CanHandleModalButtonClick()) return;
             if (_selectedSnapshot == null || _selectedSnapshot.isLocked) return;
             string profileKey = VaultRepository.GetCurrentProfileKey();
-            VaultRepository.DeleteSlot(profileKey, _selectedSnapshot.survivorBodyName, _selectedSnapshot.slotIndex);
+            VaultRepository.DeleteSlot(profileKey, _selectedSnapshot.GetStorageBucket(), _selectedSnapshot.slotIndex);
             _selectedSnapshot = null;
             SetDeleteConfirmVisible(false, skipFocusShift: true);
             RebuildSlotCards();

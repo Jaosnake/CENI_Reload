@@ -42,6 +42,10 @@
       <HintPath>$(RoR2ManagedDir)\SimpleJSON.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <Reference Include="Zio">
+      <HintPath>$(RoR2ManagedDir)\Zio.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
     <Reference Include="Rewired_Core">
       <HintPath>$(RoR2ManagedDir)\Rewired_Core.dll</HintPath>
       <Private>false</Private>

@@ -22,6 +22,25 @@ namespace Jaosnake.CeniReload.Core
         private static readonly FieldInfo DevotionInstanceListField = AccessTools.Field(typeof(DevotionInventoryController), "InstanceList");
         private static readonly FieldInfo DevotionInventoryField = AccessTools.Field(typeof(DevotionInventoryController), "_devotionMinionInventory");
 
+        public static string BuildPlayerIdentity(NetworkUser user)
+        {
+            if (user == null) return string.Empty;
+            var uid = user.id;
+            if (uid.value != 0UL)
+            {
+                return $"steam:{uid.value}:{uid.subId}";
+            }
+            if (!string.IsNullOrEmpty(uid.strValue))
+            {
+                return $"eos:{uid.strValue}:{uid.subId}";
+            }
+            if (!string.IsNullOrEmpty(user.userName))
+            {
+                return $"name:{user.userName}:{uid.subId}";
+            }
+            return string.Empty;
+        }
+
         public static CheckpointSnapshot CaptureCurrentRun()
         {
             var run = Run.instance;
@@ -68,13 +87,26 @@ namespace Jaosnake.CeniReload.Core
             snapshot.difficultyDisplayToken = diffDef != null ? diffDef.nameToken : string.Empty;
 
             var players = PlayerCharacterMasterController.instances;
+            var ordered = new List<PlayerCharacterMasterController>(players.Count);
             for (int i = 0; i < players.Count; i++)
             {
-                var pcmc = players[i];
-                if (pcmc == null || pcmc.master == null) continue;
+                var p = players[i];
+                if (p == null || p.master == null) continue;
+                if (p.networkUser != null && p.networkUser.isLocalPlayer)
+                {
+                    ordered.Insert(0, p);
+                }
+                else
+                {
+                    ordered.Add(p);
+                }
+            }
 
+            for (int i = 0; i < ordered.Count; i++)
+            {
+                var pcmc = ordered[i];
                 var master = pcmc.master;
-                var playerSnap = CapturePlayer(master, i);
+                var playerSnap = CapturePlayer(master, pcmc.networkUser, i);
                 if (playerSnap == null) continue;
 
                 snapshot.players.Add(playerSnap);
@@ -93,6 +125,11 @@ namespace Jaosnake.CeniReload.Core
             if (snapshot.players.Count == 0 || string.IsNullOrEmpty(snapshot.survivorBodyName))
                 return null;
 
+            bool isMultiplayer = snapshot.players.Count > 1 ||
+                                 (NetworkUser.readOnlyInstancesList != null && NetworkUser.readOnlyInstancesList.Count > 1);
+            snapshot.isMultiplayerRun = isMultiplayer;
+            snapshot.vaultBucket = isMultiplayer ? VaultRepository.MultiplayerBucket : snapshot.survivorBodyName;
+
             if (Chainloader.PluginInfos != null)
             {
                 foreach (var kv in Chainloader.PluginInfos)
@@ -108,7 +145,7 @@ namespace Jaosnake.CeniReload.Core
             return snapshot;
         }
 
-        private static PlayerSnapshot CapturePlayer(CharacterMaster master, int userIndex)
+        private static PlayerSnapshot CapturePlayer(CharacterMaster master, NetworkUser netUser, int userIndex)
         {
             string bodyName = master.bodyPrefab != null ? master.bodyPrefab.name : string.Empty;
             if (string.IsNullOrEmpty(bodyName)) return null;
@@ -116,6 +153,8 @@ namespace Jaosnake.CeniReload.Core
             var player = new PlayerSnapshot
             {
                 userIndex = userIndex,
+                playerId = BuildPlayerIdentity(netUser),
+                playerName = netUser != null && !string.IsNullOrEmpty(netUser.userName) ? netUser.userName : $"Player {userIndex + 1}",
                 bodyName = bodyName,
                 money = master.money,
                 voidCoins = master.voidCoins,

@@ -52,7 +52,7 @@ namespace Jaosnake.CeniReload.Hooks
         {
             if (NetworkServer.active && SnapshotRestore.IsRestoringRun && user != null && user.master != null)
             {
-                SnapshotRestore.ApplyToPlayerMaster(user.master);
+                SnapshotRestore.ApplyToPlayerMaster(user, user.master);
             }
         }
 
@@ -108,8 +108,10 @@ namespace Jaosnake.CeniReload.Hooks
                 }
                 else if (saveResult == SaveSlotResult.AllSlotsLocked)
                 {
-                    string survName = CeniReloadStrings.LocalizeGameToken(snapshot.survivorDisplayToken, snapshot.survivorBodyName);
-                    Chat.AddMessage(CeniReloadStrings.Format("CENIRELOAD_CHAT_ALL_LOCKED", survName));
+                    string bucketDisplay = snapshot.IsMultiplayer()
+                        ? "Multiplayer"
+                        : CeniReloadStrings.LocalizeGameToken(snapshot.survivorDisplayToken, snapshot.survivorBodyName);
+                    Chat.AddMessage(CeniReloadStrings.Format("CENIRELOAD_CHAT_ALL_LOCKED", bucketDisplay));
                 }
                 else
                 {

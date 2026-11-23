@@ -25,6 +25,8 @@ namespace Jaosnake.CeniReload.Core
         public static bool AutoLaunchOnPreGame { get; private set; }
         public static bool StageSceneApplied { get; private set; }
         private static int _restoredPlayerCursor;
+        private static readonly HashSet<int> _matchedPlayerIndices = new HashSet<int>();
+        private static readonly Dictionary<CharacterMaster, PlayerSnapshot> _matchedMasters = new Dictionary<CharacterMaster, PlayerSnapshot>();
 
         public static void ClearPending()
         {
@@ -32,6 +34,8 @@ namespace Jaosnake.CeniReload.Core
             AutoLaunchOnPreGame = false;
             StageSceneApplied = false;
             _restoredPlayerCursor = 0;
+            _matchedPlayerIndices.Clear();
+            _matchedMasters.Clear();
         }
 
         public static bool TryOverrideInitialStageScene(Run run)
@@ -68,6 +72,8 @@ namespace Jaosnake.CeniReload.Core
                 AutoLaunchOnPreGame = false;
                 StageSceneApplied = false;
                 _restoredPlayerCursor = 0;
+                _matchedPlayerIndices.Clear();
+                _matchedMasters.Clear();
 
                 ApplyPreGameSettings(preGame, snapshot);
 
@@ -105,6 +111,8 @@ namespace Jaosnake.CeniReload.Core
                 AutoLaunchOnPreGame = true;
                 StageSceneApplied = false;
                 _restoredPlayerCursor = 0;
+                _matchedPlayerIndices.Clear();
+                _matchedMasters.Clear();
 
                 string gm = "ClassicRun";
                 if (!string.IsNullOrEmpty(snapshot.gameModeName) &&
@@ -222,15 +230,61 @@ namespace Jaosnake.CeniReload.Core
             }
         }
 
-        public static void ApplyToPlayerMaster(CharacterMaster master)
+        private static PlayerSnapshot MatchPlayerSnapshotForUser(CheckpointSnapshot snap, NetworkUser user)
+        {
+            if (snap == null || snap.players == null || snap.players.Count == 0) return null;
+
+            string userIdentity = SnapshotCapture.BuildPlayerIdentity(user);
+            bool anySavedHasIdentity = false;
+
+            for (int i = 0; i < snap.players.Count; i++)
+            {
+                var p = snap.players[i];
+                if (p == null) continue;
+                if (!string.IsNullOrEmpty(p.playerId))
+                {
+                    anySavedHasIdentity = true;
+                    if (!_matchedPlayerIndices.Contains(i) &&
+                        !string.IsNullOrEmpty(userIdentity) &&
+                        string.Equals(p.playerId, userIdentity, StringComparison.OrdinalIgnoreCase))
+                    {
+                        _matchedPlayerIndices.Add(i);
+                        return p;
+                    }
+                }
+            }
+
+            // In Multiplayer saves with recorded identities, a new player who wasn't in the original save starts fresh
+            // (never steals an absent player's survivor, items, or drones).
+            if (snap.IsMultiplayer() && anySavedHasIdentity)
+            {
+                string name = user != null ? user.userName : "Unknown";
+                CeniReloadPlugin.Log?.LogInfo($"Multiplayer checkpoint Slot {snap.slotIndex}: player '{name}' was not in the saved run; starting fresh.");
+                return null;
+            }
+
+            // Singleplayer (or legacy save without playerId): match sequentially
+            while (_restoredPlayerCursor < snap.players.Count)
+            {
+                int idx = _restoredPlayerCursor++;
+                if (_matchedPlayerIndices.Add(idx) && snap.players[idx] != null)
+                {
+                    return snap.players[idx];
+                }
+            }
+
+            return null;
+        }
+
+        public static void ApplyToPlayerMaster(NetworkUser user, CharacterMaster master)
         {
             var snap = PendingSnapshot;
             if (snap == null || master == null || snap.players == null || snap.players.Count == 0) return;
 
-            int idx = _restoredPlayerCursor < snap.players.Count ? _restoredPlayerCursor : 0;
-            _restoredPlayerCursor++;
-            var playerSnap = snap.players[idx];
+            var playerSnap = MatchPlayerSnapshotForUser(snap, user);
             if (playerSnap == null) return;
+
+            _matchedMasters[master] = playerSnap;
 
             try
             {
@@ -293,11 +347,23 @@ namespace Jaosnake.CeniReload.Core
                 var players = PlayerCharacterMasterController.instances;
                 if (snap.players != null)
                 {
-                    for (int i = 0; i < players.Count && i < snap.players.Count; i++)
+                    for (int i = 0; i < players.Count; i++)
                     {
                         var pcmc = players[i];
-                        var pSnap = snap.players[i];
-                        if (pcmc == null || pcmc.master == null || pSnap == null) continue;
+                        if (pcmc == null || pcmc.master == null) continue;
+
+                        if (!_matchedMasters.TryGetValue(pcmc.master, out var pSnap) || pSnap == null)
+                        {
+                            // Fallback only for singleplayer if SetupUserCharacterMaster did not register this master
+                            if (!snap.IsMultiplayer() && i < snap.players.Count)
+                            {
+                                pSnap = snap.players[i];
+                            }
+                            else
+                            {
+                                continue;
+                            }
+                        }
 
                         // Re-apply currency & luck after stage entry so stage transition resets don't zero out saved gold
                         pcmc.master.money = pSnap.money;

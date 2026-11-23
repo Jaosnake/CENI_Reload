@@ -17,6 +17,8 @@ namespace Jaosnake.CeniReload
         public static ManualLogSource Log { get; private set; }
         public static ConfigEntry<bool> AutoSaveEnabled { get; private set; }
         public static ConfigEntry<bool> ShowChatNotifications { get; private set; }
+        public static ConfigEntry<bool> UseCloudStorage { get; private set; }
+        public static ConfigEntry<string> CloudStorageSubDirectory { get; private set; }
 
         private Harmony _harmony;
 
@@ -36,6 +38,20 @@ namespace Jaosnake.CeniReload
                 "ShowChatMessages",
                 true,
                 "Show a chat notification when CENI_RELOAD saves or restores a checkpoint."
+            );
+
+            UseCloudStorage = Config.Bind(
+                "Storage",
+                "UseCloudStorage",
+                false,
+                "Store the 5-slot Checkpoint Vault in Steam / Epic Games Cloud Storage instead of local BepInEx/config."
+            );
+
+            CloudStorageSubDirectory = Config.Bind(
+                "Storage",
+                "CloudStorageSubDirectory",
+                "CENI_RELOAD",
+                "Subdirectory inside Steam / Epic Cloud Storage used when UseCloudStorage is enabled (change to isolate mod profiles)."
             );
 
             string pluginDir = Path.GetDirectoryName(Info.Location);

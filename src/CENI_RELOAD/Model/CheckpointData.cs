@@ -13,6 +13,8 @@ namespace Jaosnake.CeniReload.Model
         public int schemaVersion = 1;
         public int slotIndex;
         public bool isLocked;
+        public bool isMultiplayerRun;
+        public string vaultBucket;
         public string savedUtcIso;
         public string profileKey;
 
@@ -110,7 +112,14 @@ namespace Jaosnake.CeniReload.Model
 
         public bool IsMultiplayer()
         {
-            return players != null && players.Count > 1;
+            return isMultiplayerRun || (players != null && players.Count > 1);
+        }
+
+        public string GetStorageBucket()
+        {
+            if (!string.IsNullOrEmpty(vaultBucket))
+                return vaultBucket;
+            return IsMultiplayer() ? "Multiplayer" : survivorBodyName;
         }
 
         public bool IsSimulacrum()
@@ -192,6 +201,8 @@ namespace Jaosnake.CeniReload.Model
     public class PlayerSnapshot
     {
         public int userIndex;
+        public string playerId;
+        public string playerName;
         public string bodyName;
         public uint money;
         public uint voidCoins;
