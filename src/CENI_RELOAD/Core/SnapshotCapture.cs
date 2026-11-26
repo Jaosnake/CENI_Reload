@@ -52,7 +52,7 @@ namespace Jaosnake.CeniReload.Core
 
             var snapshot = new CheckpointSnapshot
             {
-                schemaVersion = 1,
+                schemaVersion = 2,
                 profileKey = VaultRepository.GetCurrentProfileKey(),
                 gameModeName = GameModeCatalog.GetGameModeName(run.gameModeIndex),
                 stageSceneName = sceneDef.baseSceneName,
@@ -68,6 +68,8 @@ namespace Jaosnake.CeniReload.Core
                     ? TeamManager.instance.GetTeamExperience(TeamIndex.Player)
                     : 0UL
             };
+
+            StageRandomState.Capture(run, snapshot);
 
             if (EventFlagsField?.GetValue(run) is HashSet<string> flags)
             {
@@ -162,6 +164,14 @@ namespace Jaosnake.CeniReload.Core
                 loadoutBase64 = SerializeLoadout(master.loadout)
             };
 
+            var playerBody = master.GetBody();
+            if (playerBody != null)
+            {
+                player.hasBodyPosition = true;
+                player.bodyFootPosition = playerBody.footPosition;
+                player.bodyYaw = playerBody.transform.eulerAngles.y;
+            }
+
             if (master.inventory != null)
             {
                 player.infusionBonus = master.inventory.infusionBonus;
@@ -190,6 +200,14 @@ namespace Jaosnake.CeniReload.Core
                     masterName = masterName,
                     bodyName = minionBodyName
                 };
+
+                var minionBody = candidate.GetBody();
+                if (minionBody != null)
+                {
+                    minionSnap.hasBodyPosition = true;
+                    minionSnap.bodyFootPosition = minionBody.footPosition;
+                    minionSnap.bodyYaw = minionBody.transform.eulerAngles.y;
+                }
 
                 if (candidate.inventory != null)
                 {

@@ -59,6 +59,8 @@ Just like Rogério Ceni saved São Paulo on the pitch, **C.E.N.I RELOAD** saves 
 
 ### ⚙️ Configuration & Storage
 
+**Checkpoint compatibility (1.0.1):** New checkpoints record player/ally positions and the generator state used to create the stage. Older checkpoints remain readable, but their original positions were never recorded and cannot be recovered; the game chooses the player spawn and allies use safe placement. Local file replacement retains the previous checkpoint as `.bak`. Cloud storage uses its separate existing backend.
+
 - **Config file**: `BepInEx/config/com.Jaosnake.CENI_RELOAD.cfg`
   - `AutoSaveOnStageStart` *(default: `true`)* — Automatically saves a checkpoint at the start of every playable stage from Stage 2 onward.
   - `ShowChatMessages` *(default: `true`)* — Prints a chat notification when a checkpoint is saved or restored.
@@ -130,6 +132,8 @@ Assim como o Rogério Ceni salvava o São Paulo em campo, o **C.E.N.I RELOAD** s
 2. Inicie o Risk of Rain 2.
 
 ### ⚙️ Configuração e Armazenamento
+
+**Compatibilidade dos checkpoints (1.0.1):** Novos checkpoints registram as posições do jogador/aliados e o estado do gerador usado para criar a fase. Checkpoints antigos continuam legíveis, mas suas posições originais não foram registradas e não podem ser recuperadas; o jogo escolhe o ponto do jogador e os aliados usam posicionamento seguro. A substituição local conserva o checkpoint anterior em `.bak`. A nuvem usa seu backend separado já existente.
 
 - **Arquivo de configuração**: `BepInEx/config/com.Jaosnake.CENI_RELOAD.cfg`
   - `AutoSaveOnStageStart` *(padrão: `true`)* — Salva automaticamente um checkpoint no início de cada fase jogável a partir da Fase 2.

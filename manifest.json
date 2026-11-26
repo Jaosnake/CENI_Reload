@@ -1,7 +1,7 @@
 {
   "name": "CENI_RELOAD",
   "description": "100% written-from-scratch stage checkpoint vault for Risk of Rain 2 with 5 slots per survivor, card-based UI, controller navigation, and EN/pt-BR localization.",
-  "version_number": "1.0.0",
+  "version_number": "1.0.1",
   "dependencies": [
     "bbepis-BepInExPack-5.4.2121"
   ],

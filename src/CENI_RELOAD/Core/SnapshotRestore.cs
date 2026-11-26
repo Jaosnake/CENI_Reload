@@ -146,6 +146,12 @@ namespace Jaosnake.CeniReload.Core
             try
             {
                 var snapshot = PendingSnapshot;
+                if (snapshot.HasMissingSurvivors())
+                {
+                    CeniReloadPlugin.Log?.LogWarning($"Cannot auto-launch checkpoint: missing survivor '{snapshot.GetFirstMissingSurvivorName()}'.");
+                    ClearPending();
+                    yield break;
+                }
                 ApplyPreGameSettings(preGame, snapshot);
                 CeniReloadPlugin.Log?.LogInfo($"Auto-launching run from PreGame for checkpoint Slot {snapshot.slotIndex} ({snapshot.survivorBodyName}, Stage {snapshot.stageClearCount + 1}: {snapshot.stageSceneName})");
                 preGame.StartLaunch();
@@ -325,6 +331,18 @@ namespace Jaosnake.CeniReload.Core
             var snap = PendingSnapshot;
             if (snap == null) yield break;
 
+            // Stage.Start is itself a coroutine. Wait for real bodies rather than
+            // assuming every survivor has finished spawning after half a second.
+            float deadline = Time.realtimeSinceStartup + 10f;
+            while (stage != null && Time.realtimeSinceStartup < deadline)
+            {
+                bool ready = _matchedMasters.Count > 0;
+                foreach (var master in _matchedMasters.Keys)
+                    if (master == null || master.GetBody() == null) ready = false;
+                if (ready) break;
+                yield return null;
+            }
+            if (stage == null || !ReferenceEquals(PendingSnapshot, snap)) yield break;
             yield return new WaitForSeconds(0.5f);
 
             try
@@ -370,47 +388,15 @@ namespace Jaosnake.CeniReload.Core
                         pcmc.master.voidCoins = pSnap.voidCoins;
                         pcmc.master.luck = pSnap.luck;
 
+                        if (pSnap.hasBodyPosition)
+                            RestoreBodyPosition(pcmc.master.GetBody(), pSnap.bodyFootPosition, pSnap.bodyYaw);
+
                         if (pSnap.devotionItems != null && pSnap.devotionItems.Count > 0)
                         {
                             RestoreDevotionItems(pcmc.master, pSnap.devotionItems);
                         }
 
-                        if (pSnap.minions == null) continue;
-
-                        var bodyObj = pcmc.master.GetBodyObject();
-                        Vector3 basePos = bodyObj != null ? bodyObj.transform.position : Vector3.zero;
-                        Quaternion baseRot = bodyObj != null ? bodyObj.transform.rotation : Quaternion.identity;
-
-                        for (int m = 0; m < pSnap.minions.Count; m++)
-                        {
-                            var minionSnap = pSnap.minions[m];
-                            if (minionSnap == null || string.IsNullOrEmpty(minionSnap.masterName)) continue;
-
-                            var masterPrefab = MasterCatalog.FindMasterPrefab(minionSnap.masterName);
-                            if (masterPrefab == null) continue;
-
-                            Vector3 offset = new Vector3(
-                                Mathf.Cos(m * 1.1f) * 3f,
-                                1.5f,
-                                Mathf.Sin(m * 1.1f) * 3f
-                            );
-
-                            var summon = new MasterSummon
-                            {
-                                masterPrefab = masterPrefab,
-                                position = basePos + offset,
-                                rotation = baseRot,
-                                summonerBodyObject = bodyObj,
-                                ignoreTeamMemberLimit = true,
-                                useAmbientLevel = true
-                            };
-
-                            var spawnedMaster = summon.Perform();
-                            if (spawnedMaster != null && spawnedMaster.inventory != null)
-                            {
-                                RestoreInventory(spawnedMaster.inventory, minionSnap.items, minionSnap.tempItems, minionSnap.equipments, 0, 0, 0);
-                            }
-                        }
+                        RestoreMinions(pcmc.master, pSnap.minions, snap.seed);
                     }
                 }
 
@@ -427,6 +413,108 @@ namespace Jaosnake.CeniReload.Core
             finally
             {
                 ClearPending();
+            }
+        }
+
+        private static bool IsFinite(Vector3 position)
+        {
+            return !float.IsNaN(position.x) && !float.IsInfinity(position.x) &&
+                   !float.IsNaN(position.y) && !float.IsInfinity(position.y) &&
+                   !float.IsNaN(position.z) && !float.IsInfinity(position.z);
+        }
+
+        private static void RestoreBodyPosition(CharacterBody body, Vector3 footPosition, float yaw)
+        {
+            if (body == null || !IsFinite(footPosition) || float.IsNaN(yaw) || float.IsInfinity(yaw)) return;
+            TeleportHelper.TeleportBody(new TeleportHelper.TeleportBodyArgs
+            {
+                body = body,
+                targetPosition = footPosition,
+                targetRotation = Quaternion.Euler(0f, yaw, 0f),
+                teleportMinions = false
+            });
+            // This game's TeleportBody overload moves the body but does not apply
+            // targetRotation. Restore facing explicitly as well.
+            body.transform.rotation = Quaternion.Euler(0f, yaw, 0f);
+            if (body.characterDirection != null) body.characterDirection.yaw = yaw;
+        }
+
+        private static bool IsSkillManagedMinion(CharacterMaster owner, GameObject prefab)
+        {
+            var body = owner.GetBody();
+            if (body == null) return false;
+            foreach (var skill in body.GetComponents<GenericSkill>())
+            {
+                if (skill.skillDef is RoR2.Skills.EnsureDroneMasterSkillDef droneSkill && droneSkill.masterPrefab == prefab)
+                    return true;
+            }
+            return false;
+        }
+
+        private static void RestoreMinions(CharacterMaster owner, List<MinionSnapshot> minions, ulong seed)
+        {
+            var ownerBody = owner.GetBody();
+            if (ownerBody == null || minions == null) return;
+            var reused = new HashSet<CharacterMaster>();
+            for (int i = 0; i < minions.Count; i++)
+            {
+                var saved = minions[i];
+                if (saved == null || string.IsNullOrEmpty(saved.masterName)) continue;
+                var prefab = MasterCatalog.FindMasterPrefab(saved.masterName);
+                if (prefab == null) continue;
+
+                CharacterMaster restored = null;
+                foreach (var candidate in CharacterMaster.readOnlyInstancesList)
+                {
+                    if (candidate == null || reused.Contains(candidate) || candidate.minionOwnership?.ownerMaster != owner) continue;
+                    if (string.Equals(candidate.name.Replace("(Clone)", "").Trim(), prefab.name, StringComparison.Ordinal))
+                    {
+                        restored = candidate;
+                        break;
+                    }
+                }
+
+                if (restored == null)
+                {
+                    // DroneTech's skill/repair queue owns these companions. It may
+                    // finish after this coroutine; manually summoning creates doubles.
+                    if (IsSkillManagedMinion(owner, prefab)) continue;
+                    var masterComponent = prefab.GetComponent<CharacterMaster>();
+                    var bodyPrefab = masterComponent != null ? masterComponent.bodyPrefab : null;
+                    var body = bodyPrefab != null ? bodyPrefab.GetComponent<CharacterBody>() : null;
+                    if (body == null) continue;
+
+                    Vector3 position;
+                    if (saved.hasBodyPosition && IsFinite(saved.bodyFootPosition)) position = saved.bodyFootPosition;
+                    else
+                    {
+                        // Old saves have no coordinates. Use the game's hull-aware
+                        // ground/air placement instead of an arbitrary upward offset.
+                        var safe = TeleportHelper.FindSafeTeleportDestination(ownerBody.footPosition, body,
+                            new Xoroshiro128Plus(seed + (ulong)i));
+                        if (!safe.HasValue)
+                        {
+                            CeniReloadPlugin.Log?.LogWarning($"No safe position found for checkpoint ally '{saved.masterName}'.");
+                            continue;
+                        }
+                        position = safe.Value;
+                    }
+                    restored = new MasterSummon
+                    {
+                        masterPrefab = prefab,
+                        position = position,
+                        rotation = Quaternion.Euler(0f, saved.hasBodyPosition ? saved.bodyYaw : ownerBody.transform.eulerAngles.y, 0f),
+                        summonerBodyObject = ownerBody.gameObject,
+                        ignoreTeamMemberLimit = true,
+                        useAmbientLevel = true
+                    }.Perform();
+                }
+
+                if (restored == null) continue;
+                reused.Add(restored);
+                if (saved.hasBodyPosition) RestoreBodyPosition(restored.GetBody(), saved.bodyFootPosition, saved.bodyYaw);
+                if (restored.inventory != null)
+                    RestoreInventory(restored.inventory, saved.items, saved.tempItems, saved.equipments, 0, 0, 0);
             }
         }
 
@@ -526,7 +614,7 @@ namespace Jaosnake.CeniReload.Core
 
             if (items != null)
             {
-                var seenPermanent = new HashSet<ItemIndex>();
+                var targets = new Dictionary<ItemIndex, int>();
                 for (int i = 0; i < items.Count; i++)
                 {
                     var entry = items[i];
@@ -534,20 +622,24 @@ namespace Jaosnake.CeniReload.Core
 
                     var itemIndex = ItemCatalog.FindItemIndex(entry.itemName);
                     if (itemIndex == ItemIndex.None || ItemCatalog.GetItemDef(itemIndex) == null) continue;
-                    if (!seenPermanent.Add(itemIndex)) continue;
-
-                    int existing = inventory.GetItemCountPermanent(itemIndex);
-                    int delta = entry.count - existing;
+                    if (!targets.ContainsKey(itemIndex)) targets.Add(itemIndex, entry.count);
+                }
+                for (int i = 0; i < ItemCatalog.itemCount; i++)
+                {
+                    var itemIndex = (ItemIndex)i;
+                    targets.TryGetValue(itemIndex, out int target);
+                    int delta = target - inventory.GetItemCountPermanent(itemIndex);
                     if (delta > 0)
                     {
                         inventory.GiveItemPermanent(itemIndex, delta);
                     }
+                    else if (delta < 0) inventory.RemoveItemPermanent(itemIndex, -delta);
                 }
             }
 
             if (tempItems != null)
             {
-                var seenTemp = new HashSet<ItemIndex>();
+                var targets = new Dictionary<ItemIndex, float>();
                 for (int i = 0; i < tempItems.Count; i++)
                 {
                     var temp = tempItems[i];
@@ -559,14 +651,18 @@ namespace Jaosnake.CeniReload.Core
 
                     var itemIdx = ItemCatalog.FindItemIndex(temp.itemName);
                     if (itemIdx == ItemIndex.None || ItemCatalog.GetItemDef(itemIdx) == null) continue;
-                    if (!seenTemp.Add(itemIdx)) continue;
-
-                    float existingTemp = inventory.GetTempItemRawValue(itemIdx);
-                    float deltaTemp = temp.rawValue - existingTemp;
+                    if (!targets.ContainsKey(itemIdx)) targets.Add(itemIdx, temp.rawValue);
+                }
+                for (int i = 0; i < ItemCatalog.itemCount; i++)
+                {
+                    var itemIdx = (ItemIndex)i;
+                    targets.TryGetValue(itemIdx, out float target);
+                    float deltaTemp = target - inventory.GetTempItemRawValue(itemIdx);
                     if (deltaTemp > 0.001f)
                     {
                         inventory.GiveItemTemp(itemIdx, deltaTemp);
                     }
+                    else if (deltaTemp < -0.001f) inventory.RemoveItemTemp(itemIdx, -deltaTemp);
                 }
             }
 

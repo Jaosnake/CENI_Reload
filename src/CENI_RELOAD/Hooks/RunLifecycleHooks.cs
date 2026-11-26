@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Reflection;
 using HarmonyLib;
 using Jaosnake.CeniReload.Core;
 using Jaosnake.CeniReload.Localization;
@@ -12,6 +13,9 @@ namespace Jaosnake.CeniReload.Hooks
     [HarmonyPatch]
     public static class RunLifecycleHooks
     {
+        private static Run _initializingRestoredRun;
+        private static readonly MethodInfo GenerateLoopRng = typeof(Run).GetMethod("GenerateLoopRNG", BindingFlags.Instance | BindingFlags.NonPublic);
+
         [HarmonyPostfix]
         [HarmonyPatch(typeof(PreGameController), "Start")]
         private static void OnPreGameStartPostfix(PreGameController __instance)
@@ -28,8 +32,34 @@ namespace Jaosnake.CeniReload.Hooks
         {
             if (NetworkServer.active && SnapshotRestore.IsRestoringRun)
             {
+                _initializingRestoredRun = __instance;
                 SnapshotRestore.ApplyToRunStart(__instance);
             }
+        }
+
+        [HarmonyFinalizer]
+        [HarmonyPatch(typeof(Run), "Start")]
+        private static void OnRunStartFinalizer(Run __instance)
+        {
+            if (ReferenceEquals(_initializingRestoredRun, __instance)) _initializingRestoredRun = null;
+        }
+
+        [HarmonyPrefix]
+        [HarmonyPatch(typeof(Run), "OnLoopBeginServer")]
+        private static bool OnLoopBeginPrefix(Run __instance)
+        {
+            if (!ReferenceEquals(_initializingRestoredRun, __instance)) return true;
+            // A reload resumes an existing loop. Initialize its generator without
+            // incrementing counters, clearing flags or replaying new-loop rewards.
+            GenerateLoopRng.Invoke(__instance, null);
+            return false;
+        }
+
+        [HarmonyPrefix]
+        [HarmonyPatch(typeof(Run), "GenerateStageRNG")]
+        private static void OnGenerateStageRngPrefix(Run __instance)
+        {
+            if (NetworkServer.active) StageRandomState.BeforeGenerate(__instance, SnapshotRestore.PendingSnapshot);
         }
 
         [HarmonyPrefix]

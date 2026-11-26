@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.1
+
+- New checkpoints record player and ally positions and stage generation state. Loading reuses existing allies, leaves DroneTech skill drones to the game, and uses safe placement for allies in older saves; older saves cannot recover positions they never recorded.
+- Loading resumes the saved loop and restores item quantities without retaining extra starting items. Missing survivor mods belonging only to absent co-op players no longer block the players present in the lobby.
+- Local checkpoint updates preserve the previous file until replacement succeeds and retain a `.bak` copy, including when changing a slot's lock.
+
 ## 1.0.0 — Initial Release of CENI_RELOAD
 
 - **100% written from scratch** by Jaosnake under the **MIT License** — brand-new standalone project, codebase (`Jaosnake.CeniReload`), repository (`Jaosnake/CENI_Reload`), and package (`Jaosnake-CENI_RELOAD`).

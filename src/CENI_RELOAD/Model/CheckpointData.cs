@@ -10,7 +10,7 @@ namespace Jaosnake.CeniReload.Model
     [Serializable]
     public class CheckpointSnapshot
     {
-        public int schemaVersion = 1;
+        public int schemaVersion = 2;
         public int slotIndex;
         public bool isLocked;
         public bool isMultiplayerRun;
@@ -33,6 +33,9 @@ namespace Jaosnake.CeniReload.Model
         public string difficultyName;
         public string difficultyDisplayToken;
         public ulong seed;
+        public bool hasStageRandomState;
+        public ulong stageRandomState0;
+        public ulong stageRandomState1;
         public int shopPortalCount;
         public string ruleBookBase64;
         public ulong teamExperience;
@@ -158,6 +161,17 @@ namespace Jaosnake.CeniReload.Model
         {
             if (!BodyCatalog.availability.available) return string.Empty;
 
+            // In identity-based co-op saves only present participants are restored.
+            // The main menu has no final roster yet: validate again in PreGame.
+            if (IsMultiplayer() && players != null && players.Exists(p => p != null && !string.IsNullOrEmpty(p.playerId)))
+            {
+                if (PreGameController.instance == null) return string.Empty;
+                var presentIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var user in NetworkUser.readOnlyInstancesList)
+                    presentIds.Add(Core.SnapshotCapture.BuildPlayerIdentity(user));
+                return GetMissingSurvivorForParticipants(presentIds, name => BodyCatalog.FindBodyPrefab(name) != null);
+            }
+
             if (!string.IsNullOrEmpty(survivorBodyName) && BodyCatalog.FindBodyPrefab(survivorBodyName) == null)
             {
                 return survivorBodyName;
@@ -175,6 +189,17 @@ namespace Jaosnake.CeniReload.Model
                 }
             }
 
+            return string.Empty;
+        }
+
+        public string GetMissingSurvivorForParticipants(ISet<string> presentIds, Func<string, bool> survivorExists)
+        {
+            if (players == null) return string.Empty;
+            foreach (var player in players)
+            {
+                if (player == null || string.IsNullOrEmpty(player.playerId) || !presentIds.Contains(player.playerId)) continue;
+                if (!string.IsNullOrEmpty(player.bodyName) && !survivorExists(player.bodyName)) return player.bodyName;
+            }
             return string.Empty;
         }
 
@@ -204,6 +229,9 @@ namespace Jaosnake.CeniReload.Model
         public string playerId;
         public string playerName;
         public string bodyName;
+        public bool hasBodyPosition;
+        public Vector3 bodyFootPosition;
+        public float bodyYaw;
         public uint money;
         public uint voidCoins;
         public float luck;
@@ -247,6 +275,9 @@ namespace Jaosnake.CeniReload.Model
     {
         public string masterName;
         public string bodyName;
+        public bool hasBodyPosition;
+        public Vector3 bodyFootPosition;
+        public float bodyYaw;
         public List<ItemEntry> items = new List<ItemEntry>();
         public List<TempItemEntry> tempItems = new List<TempItemEntry>();
         public List<EquipmentEntry> equipments = new List<EquipmentEntry>();

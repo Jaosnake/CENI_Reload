@@ -12,7 +12,7 @@ namespace Jaosnake.CeniReload
     {
         public const string PluginGuid = "com.Jaosnake.CENI_RELOAD";
         public const string PluginName = "CENI_RELOAD";
-        public const string PluginVersion = "1.0.0";
+        public const string PluginVersion = "1.0.1";
 
         public static ManualLogSource Log { get; private set; }
         public static ConfigEntry<bool> AutoSaveEnabled { get; private set; }

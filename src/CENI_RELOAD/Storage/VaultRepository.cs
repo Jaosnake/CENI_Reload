@@ -111,14 +111,7 @@ namespace Jaosnake.CeniReload.Storage
             Directory.CreateDirectory(localDir);
 
             string finalPath = GetLocalSlotFilePath(profileKey, bucketKey, slotIndex);
-            string tempPath = finalPath + ".tmp";
-            File.WriteAllText(tempPath, json, Encoding.UTF8);
-
-            if (File.Exists(finalPath))
-            {
-                File.Delete(finalPath);
-            }
-            File.Move(tempPath, finalPath);
+            AtomicCheckpointFile.Write(finalPath, json);
             return true;
         }
 
