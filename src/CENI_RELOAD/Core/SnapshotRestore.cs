@@ -22,19 +22,63 @@ namespace Jaosnake.CeniReload.Core
         private static readonly FieldInfo DevotionInventoryField = AccessTools.Field(typeof(DevotionInventoryController), "_devotionMinionInventory");
         public static CheckpointSnapshot PendingSnapshot { get; private set; }
         public static bool IsRestoringRun => PendingSnapshot != null;
+        public static CheckpointSnapshot ActiveSnapshot { get; private set; }
+        public static bool CanRestorePlayers => PendingSnapshot != null || ActiveSnapshot != null;
+        public static bool WaitingForLobby { get; private set; }
+        public static RestoreOutcome LastOutcome { get; private set; }
+        private static RestoreOutcome _outcome;
+        private static bool _restoringStageStarted;
+        public static void MarkRestoreStageStarted() { _restoringStageStarted = true; }
+        public static bool IsPrepared(CheckpointSnapshot snapshot) => WaitingForLobby && PendingSnapshot != null && snapshot != null &&
+            PendingSnapshot.slotIndex == snapshot.slotIndex && PendingSnapshot.GetStorageBucket() == snapshot.GetStorageBucket();
+        public static void CancelPrepared() { if (WaitingForLobby) ClearPending(); }
+
+        public static CheckpointValidation ValidateCheckpoint(CheckpointSnapshot snapshot)
+        {
+            var result = CheckpointValidation.Inspect(snapshot);
+            if (!result.CanLoad) return result;
+            if (DeserializeRuleBook(snapshot.ruleBookBase64) == null) result.Add("CENIRELOAD_VALIDATE_DATA", "RuleBook", true);
+            foreach (var player in snapshot.players)
+                if (CheckpointValidation.IsRequiredPlayer(snapshot, player) && DeserializeLoadout(player.loadoutBase64) == null)
+                    result.Add("CENIRELOAD_VALIDATE_DATA", "Loadout", true);
+            return result;
+        }
+
+        public static bool BeforeLaunch(PreGameController preGame)
+        {
+            if (PendingSnapshot == null) return true;
+            var result = ValidateCheckpoint(PendingSnapshot);
+            if (!result.CanLoad)
+            {
+                foreach (var issue in result.Issues) Chat.AddMessage("[CENI RELOAD] " + issue);
+                WaitingForLobby = true;
+                return false;
+            }
+            _outcome = new RestoreOutcome();
+            foreach (var issue in result.Issues) _outcome.Details.Add(issue.Key, issue.Detail, issue.Blocking);
+            WaitingForLobby = false;
+            ApplyPreGameSettings(preGame, PendingSnapshot);
+            return true;
+        }
         public static bool AutoLaunchOnPreGame { get; private set; }
         public static bool StageSceneApplied { get; private set; }
-        private static int _restoredPlayerCursor;
-        private static readonly HashSet<int> _matchedPlayerIndices = new HashSet<int>();
+        private static readonly HashSet<CharacterMaster> FreshMasters = new HashSet<CharacterMaster>();
+        private static readonly HashSet<CharacterMaster> LateMasters = new HashSet<CharacterMaster>();
+        private static readonly PlayerRestoreSession Participants = new PlayerRestoreSession();
         private static readonly Dictionary<CharacterMaster, PlayerSnapshot> _matchedMasters = new Dictionary<CharacterMaster, PlayerSnapshot>();
 
         public static void ClearPending()
         {
             PendingSnapshot = null;
+            ActiveSnapshot = null;
+            WaitingForLobby = false;
+            _outcome = null;
+            _restoringStageStarted = false;
             AutoLaunchOnPreGame = false;
             StageSceneApplied = false;
-            _restoredPlayerCursor = 0;
-            _matchedPlayerIndices.Clear();
+            Participants.Clear();
+            FreshMasters.Clear();
+            LateMasters.Clear();
             _matchedMasters.Clear();
         }
 
@@ -53,11 +97,9 @@ namespace Jaosnake.CeniReload.Core
         public static bool BeginLoadFromLobby(CheckpointSnapshot snapshot)
         {
             if (snapshot == null) return false;
-            if (snapshot.HasMissingSurvivors())
-            {
-                CeniReloadPlugin.Log?.LogWarning($"Cannot load checkpoint Slot {snapshot.slotIndex}: missing survivor '{snapshot.GetFirstMissingSurvivorName()}'.");
-                return false;
-            }
+            var check = ValidateCheckpoint(snapshot);
+            if (!check.CanLoad) { CeniReloadPlugin.Log?.LogWarning(check.ToString()); return false; }
+            if (snapshot.isBackupPreview) return false;
 
             var preGame = PreGameController.instance;
             if (preGame == null)
@@ -68,15 +110,22 @@ namespace Jaosnake.CeniReload.Core
 
             try
             {
+                bool alreadyPrepared = IsPrepared(snapshot);
+                ClearPending();
                 PendingSnapshot = snapshot;
                 AutoLaunchOnPreGame = false;
                 StageSceneApplied = false;
-                _restoredPlayerCursor = 0;
-                _matchedPlayerIndices.Clear();
+                Participants.Begin(snapshot);
                 _matchedMasters.Clear();
 
                 ApplyPreGameSettings(preGame, snapshot);
 
+                if (snapshot.IsMultiplayer() && !alreadyPrepared)
+                {
+                    WaitingForLobby = true;
+                    Chat.AddMessage("[CENI RELOAD] " + CeniReloadStrings.Get("CENIRELOAD_LOBBY_WAITING"));
+                    return true;
+                }
                 CeniReloadPlugin.Log?.LogInfo($"Launching run from checkpoint Slot {snapshot.slotIndex} ({snapshot.survivorBodyName}, Stage {snapshot.stageClearCount + 1}: {snapshot.stageSceneName})");
                 preGame.StartLaunch();
                 return true;
@@ -92,11 +141,9 @@ namespace Jaosnake.CeniReload.Core
         public static bool BeginLoadFromMainMenu(CheckpointSnapshot snapshot)
         {
             if (snapshot == null) return false;
-            if (snapshot.HasMissingSurvivors())
-            {
-                CeniReloadPlugin.Log?.LogWarning($"Cannot load checkpoint Slot {snapshot.slotIndex}: missing survivor '{snapshot.GetFirstMissingSurvivorName()}'.");
-                return false;
-            }
+            var check = ValidateCheckpoint(snapshot);
+            if (!check.CanLoad) { CeniReloadPlugin.Log?.LogWarning(check.ToString()); return false; }
+            if (snapshot.isBackupPreview) return false;
 
             if (RoR2.Console.instance == null)
             {
@@ -107,11 +154,12 @@ namespace Jaosnake.CeniReload.Core
 
             try
             {
+                ClearPending();
                 PendingSnapshot = snapshot;
-                AutoLaunchOnPreGame = true;
+                WaitingForLobby = snapshot.IsMultiplayer();
+                AutoLaunchOnPreGame = !WaitingForLobby;
                 StageSceneApplied = false;
-                _restoredPlayerCursor = 0;
-                _matchedPlayerIndices.Clear();
+                Participants.Begin(snapshot);
                 _matchedMasters.Clear();
 
                 string gm = "ClassicRun";
@@ -122,7 +170,7 @@ namespace Jaosnake.CeniReload.Core
                 }
 
                 CeniReloadPlugin.Log?.LogInfo($"Transitioning from main menu to load checkpoint Slot {snapshot.slotIndex} ({snapshot.survivorBodyName}, Mode {gm}, Stage {snapshot.stageClearCount + 1}: {snapshot.stageSceneName})");
-                RoR2.Console.instance.SubmitCmd((NetworkUser)null, $"transition_command \"gamemode {gm}; host 0;\"", false);
+                RoR2.Console.instance.SubmitCmd((NetworkUser)null, $"transition_command \"gamemode {gm}; host {(snapshot.IsMultiplayer() ? 1 : 0)};\"", false);
                 return true;
             }
             catch (Exception ex)
@@ -138,21 +186,30 @@ namespace Jaosnake.CeniReload.Core
             yield return null;
             yield return null;
 
-            if (!AutoLaunchOnPreGame || PendingSnapshot == null || preGame == null)
-                yield break;
+            if (PendingSnapshot == null || preGame == null) yield break;
+            float deadline = Time.realtimeSinceStartup + 10f;
+            while (NetworkUser.readOnlyInstancesList.Count == 0 && Time.realtimeSinceStartup < deadline) yield return null;
+            if (PendingSnapshot == null || preGame == null) yield break;
 
             AutoLaunchOnPreGame = false;
 
             try
             {
                 var snapshot = PendingSnapshot;
-                if (snapshot.HasMissingSurvivors())
+                if (!ValidateCheckpoint(snapshot).CanLoad)
                 {
-                    CeniReloadPlugin.Log?.LogWarning($"Cannot auto-launch checkpoint: missing survivor '{snapshot.GetFirstMissingSurvivorName()}'.");
-                    ClearPending();
+                    CeniReloadPlugin.Log?.LogWarning("Cannot auto-launch checkpoint: validation failed.");
+                    WaitingForLobby = true;
+                    Chat.AddMessage("[CENI RELOAD] " + ValidateCheckpoint(snapshot));
                     yield break;
                 }
                 ApplyPreGameSettings(preGame, snapshot);
+                if (WaitingForLobby)
+                {
+                    Chat.AddMessage("[CENI RELOAD] " + CeniReloadStrings.Get("CENIRELOAD_LOBBY_WAITING"));
+                    UI.CeniReloadVaultController.OpenPreparedLobby();
+                    yield break;
+                }
                 CeniReloadPlugin.Log?.LogInfo($"Auto-launching run from PreGame for checkpoint Slot {snapshot.slotIndex} ({snapshot.survivorBodyName}, Stage {snapshot.stageClearCount + 1}: {snapshot.stageSceneName})");
                 preGame.StartLaunch();
             }
@@ -232,65 +289,44 @@ namespace Jaosnake.CeniReload.Core
             }
             catch (Exception ex)
             {
+                if (_outcome != null) { _outcome.FatalError = true; _outcome.Warn("CENIRELOAD_RESULT_ERROR", "run"); }
                 CeniReloadPlugin.Log?.LogError($"Error applying checkpoint to Run.Start: {ex}");
             }
         }
 
         private static PlayerSnapshot MatchPlayerSnapshotForUser(CheckpointSnapshot snap, NetworkUser user)
         {
-            if (snap == null || snap.players == null || snap.players.Count == 0) return null;
-
-            string userIdentity = SnapshotCapture.BuildPlayerIdentity(user);
-            bool anySavedHasIdentity = false;
-
-            for (int i = 0; i < snap.players.Count; i++)
-            {
-                var p = snap.players[i];
-                if (p == null) continue;
-                if (!string.IsNullOrEmpty(p.playerId))
-                {
-                    anySavedHasIdentity = true;
-                    if (!_matchedPlayerIndices.Contains(i) &&
-                        !string.IsNullOrEmpty(userIdentity) &&
-                        string.Equals(p.playerId, userIdentity, StringComparison.OrdinalIgnoreCase))
-                    {
-                        _matchedPlayerIndices.Add(i);
-                        return p;
-                    }
-                }
-            }
-
-            // In Multiplayer saves with recorded identities, a new player who wasn't in the original save starts fresh
-            // (never steals an absent player's survivor, items, or drones).
-            if (snap.IsMultiplayer() && anySavedHasIdentity)
-            {
-                string name = user != null ? user.userName : "Unknown";
-                CeniReloadPlugin.Log?.LogInfo($"Multiplayer checkpoint Slot {snap.slotIndex}: player '{name}' was not in the saved run; starting fresh.");
-                return null;
-            }
-
-            // Singleplayer (or legacy save without playerId): match sequentially
-            while (_restoredPlayerCursor < snap.players.Count)
-            {
-                int idx = _restoredPlayerCursor++;
-                if (_matchedPlayerIndices.Add(idx) && snap.players[idx] != null)
-                {
-                    return snap.players[idx];
-                }
-            }
-
-            return null;
+            return Participants.Claim(SnapshotCapture.BuildPlayerIdentity(user));
         }
 
         public static void ApplyToPlayerMaster(NetworkUser user, CharacterMaster master)
         {
-            var snap = PendingSnapshot;
-            if (snap == null || master == null || snap.players == null || snap.players.Count == 0) return;
+            var snap = PendingSnapshot ?? ActiveSnapshot;
+            if (snap == null || master == null || snap.players == null || snap.players.Count == 0 || _matchedMasters.ContainsKey(master)) return;
+            bool lateJoin = PendingSnapshot == null || _restoringStageStarted;
+            var playerOutcome = lateJoin ? new RestoreOutcome() : _outcome;
 
             var playerSnap = MatchPlayerSnapshotForUser(snap, user);
-            if (playerSnap == null) return;
+            if (playerSnap == null)
+            {
+                if (!Participants.IsKnown(SnapshotCapture.BuildPlayerIdentity(user)) && FreshMasters.Add(master))
+                {
+                    if (lateJoin) LateMasters.Add(master);
+                    if (lateJoin) Chat.AddMessage("[CENI RELOAD] " + CeniReloadStrings.Format("CENIRELOAD_RESULT_NEW", CheckpointIssue.Escape(user?.userName)));
+                    else if (playerOutcome != null) { playerOutcome.FreshPlayers++; playerOutcome.Warn("CENIRELOAD_RESULT_NEW", user?.userName); }
+                    if (lateJoin && Run.instance != null) Run.instance.StartCoroutine(FinishFreshJoin(user, master));
+                }
+                return;
+            }
 
+            if (BodyCatalog.FindBodyPrefab(playerSnap.bodyName) == null || DeserializeLoadout(playerSnap.loadoutBase64) == null)
+            {
+                playerOutcome?.Warn("CENIRELOAD_VALIDATE_SURVIVOR", playerSnap.bodyName);
+                if (lateJoin) { LastOutcome = playerOutcome; playerOutcome.Publish(); }
+                return;
+            }
             _matchedMasters[master] = playerSnap;
+            if (lateJoin) LateMasters.Add(master);
 
             try
             {
@@ -299,7 +335,7 @@ namespace Jaosnake.CeniReload.Core
                     var bodyPrefab = BodyCatalog.FindBodyPrefab(playerSnap.bodyName);
                     if (bodyPrefab != null)
                     {
-                        master.bodyPrefab = bodyPrefab;
+                        master.PushBodyHandlingConfig(new BodyHandlingConfig(BodyCatalog.FindBodyIndex(playerSnap.bodyName), BodyHandlingPresetIndex.Initial), bodyPrefab, false);
                     }
                 }
 
@@ -317,28 +353,33 @@ namespace Jaosnake.CeniReload.Core
                 {
                     RestoreInventory(master.inventory, playerSnap.items, playerSnap.tempItems, playerSnap.equipments, playerSnap.infusionBonus,
                         (byte)Mathf.Clamp(playerSnap.activeEquipmentSlot, 0, 255),
-                        (byte)Mathf.Clamp(playerSnap.activeEquipmentSet, 0, 255));
+                        (byte)Mathf.Clamp(playerSnap.activeEquipmentSet, 0, 255), playerOutcome);
                 }
             }
             catch (Exception ex)
             {
+                playerOutcome?.Warn("CENIRELOAD_RESULT_ERROR", playerSnap.bodyName);
                 CeniReloadPlugin.Log?.LogError($"Error applying checkpoint to CharacterMaster: {ex}");
             }
+            if (lateJoin && Run.instance != null) Run.instance.StartCoroutine(FinishLateJoin(user, master, playerSnap, snap, playerOutcome));
         }
 
         public static IEnumerator FinishRestoreOnStageStart(Stage stage)
         {
             var snap = PendingSnapshot;
             if (snap == null) yield break;
+            if (_outcome == null) _outcome = new RestoreOutcome();
 
             // Stage.Start is itself a coroutine. Wait for real bodies rather than
             // assuming every survivor has finished spawning after half a second.
             float deadline = Time.realtimeSinceStartup + 10f;
             while (stage != null && Time.realtimeSinceStartup < deadline)
             {
-                bool ready = _matchedMasters.Count > 0;
+                bool ready = _matchedMasters.Count + FreshMasters.Count > 0;
                 foreach (var master in _matchedMasters.Keys)
-                    if (master == null || master.GetBody() == null) ready = false;
+                    if (!LateMasters.Contains(master) && (master == null || master.GetBody() == null)) ready = false;
+                foreach (var master in FreshMasters)
+                    if (!LateMasters.Contains(master) && (master == null || master.GetBody() == null)) ready = false;
                 if (ready) break;
                 yield return null;
             }
@@ -369,6 +410,7 @@ namespace Jaosnake.CeniReload.Core
                     {
                         var pcmc = players[i];
                         if (pcmc == null || pcmc.master == null) continue;
+                        if (LateMasters.Contains(pcmc.master)) continue;
 
                         if (!_matchedMasters.TryGetValue(pcmc.master, out var pSnap) || pSnap == null)
                         {
@@ -388,32 +430,105 @@ namespace Jaosnake.CeniReload.Core
                         pcmc.master.voidCoins = pSnap.voidCoins;
                         pcmc.master.luck = pSnap.luck;
 
-                        if (pSnap.hasBodyPosition)
-                            RestoreBodyPosition(pcmc.master.GetBody(), pSnap.bodyFootPosition, pSnap.bodyYaw);
+                        if (pcmc.master.GetBody() == null)
+                        {
+                            _outcome.Warn("CENIRELOAD_RESULT_BODY", pSnap.bodyName);
+                            LateMasters.Add(pcmc.master);
+                            Run.instance.StartCoroutine(FinishLateJoin(pcmc.networkUser, pcmc.master, pSnap, snap, new RestoreOutcome()));
+                            continue;
+                        }
+                        if (pSnap.hasBodyPosition) RestoreBodyPosition(pcmc.master.GetBody(), pSnap.bodyFootPosition, pSnap.bodyYaw);
+                        CharacterCheckpointState.Restore(pcmc.master.GetBody(), pSnap, _outcome);
+                        _outcome.PlayersRestored++;
 
                         if (pSnap.devotionItems != null && pSnap.devotionItems.Count > 0)
                         {
-                            RestoreDevotionItems(pcmc.master, pSnap.devotionItems);
+                            RestoreDevotionItems(pcmc.master, pSnap.devotionItems, _outcome);
                         }
 
-                        RestoreMinions(pcmc.master, pSnap.minions, snap.seed);
+                        RestoreMinions(pcmc.master, pSnap.minions, snap.seed, _outcome);
                     }
                 }
 
-                if (CeniReloadPlugin.ShowChatNotifications == null || CeniReloadPlugin.ShowChatNotifications.Value)
+                // Scene construction uses the saved stage-entry generator. Only after
+                // population/spawn do we restore the continuation streams for future events.
+                _outcome.FreshPlayers = 0;
+                foreach (var master in FreshMasters)
                 {
-                    string stageName = CeniReloadStrings.LocalizeGameToken(snap.stageDisplayToken, snap.stageSceneName);
-                    Chat.AddMessage(CeniReloadStrings.Format("CENIRELOAD_CHAT_LOADED", snap.slotIndex, stageName, snap.stageClearCount + 1));
+                    if (LateMasters.Contains(master)) continue;
+                    if (master != null && master.GetBody() != null) _outcome.FreshPlayers++;
+                    else _outcome.Warn("CENIRELOAD_RESULT_BODY", "new player");
                 }
+                if (Run.instance != null) RunRandomState.Restore(Run.instance, snap.randomStates, _outcome);
+                for (int i = 0; i < snap.players.Count; i++)
+                    if (!Participants.HasClaimed(i)) _outcome.Warn("CENIRELOAD_RESULT_WAITING", snap.players[i]?.playerName);
+
             }
             catch (Exception ex)
             {
+                _outcome.Warn("CENIRELOAD_RESULT_ERROR", "stage");
                 CeniReloadPlugin.Log?.LogError($"Error finalizing checkpoint restore on stage start: {ex}");
             }
             finally
             {
-                ClearPending();
+                ActiveSnapshot = snap;
+                PendingSnapshot = null;
+                AutoLaunchOnPreGame = false;
+                StageSceneApplied = false;
+                LastOutcome = _outcome;
+                _outcome.Publish();
+                _outcome = null;
             }
+        }
+
+        public static void AppendWaitingPlayers(CheckpointSnapshot next)
+        {
+            if (ActiveSnapshot != null) Participants.AppendUnclaimedTo(next);
+        }
+
+        private static IEnumerator EnsureLateBody(NetworkUser user, CharacterMaster master)
+        {
+            float deadline = Time.realtimeSinceStartup + 60f;
+            bool attemptedSpawn = false;
+            while (user != null && master != null && Run.instance != null && master.GetBody() == null && Time.realtimeSinceStartup < deadline)
+            {
+                var stage = Stage.instance;
+                if (!attemptedSpawn && stage != null && !stage.sceneDef.suppressPlayerEntry && user.serverIsClientLoaded)
+                {
+                    attemptedSpawn = true;
+                    stage.RespawnCharacter(master);
+                }
+                yield return null;
+            }
+        }
+
+        private static IEnumerator FinishFreshJoin(NetworkUser user, CharacterMaster master)
+        {
+            yield return EnsureLateBody(user, master);
+            if (master == null || master.GetBody() == null)
+            {
+                var report = new RestoreOutcome { FatalError = true };
+                report.Warn("CENIRELOAD_RESULT_BODY", user?.userName);
+                LastOutcome = report; report.Publish();
+            }
+        }
+
+        private static IEnumerator FinishLateJoin(NetworkUser user, CharacterMaster master, PlayerSnapshot player, CheckpointSnapshot source, RestoreOutcome outcome)
+        {
+            yield return EnsureLateBody(user, master);
+            try
+            {
+                if (master == null || master.GetBody() == null) { outcome.Warn("CENIRELOAD_RESULT_BODY", player.bodyName); yield break; }
+                CharacterCheckpointState.Restore(master.GetBody(), player, outcome);
+                // Late joins always use the current stage's normal spawn, never old coordinates.
+                var minions = player.ForLaterStage().minions;
+                RestoreMinions(master, minions, source.seed, outcome);
+                if (player.devotionItems != null && player.devotionItems.Count > 0) RestoreDevotionItems(master, player.devotionItems, outcome);
+                outcome.PlayersRestored++;
+                outcome.Warn("CENIRELOAD_RESULT_LATE", player.playerName);
+            }
+            catch (Exception ex) { outcome.Warn("CENIRELOAD_RESULT_ERROR", player.bodyName); CeniReloadPlugin.Log?.LogError(ex); }
+            finally { LastOutcome = outcome; outcome.Publish(); }
         }
 
         private static bool IsFinite(Vector3 position)
@@ -451,7 +566,7 @@ namespace Jaosnake.CeniReload.Core
             return false;
         }
 
-        private static void RestoreMinions(CharacterMaster owner, List<MinionSnapshot> minions, ulong seed)
+        private static void RestoreMinions(CharacterMaster owner, List<MinionSnapshot> minions, ulong seed, RestoreOutcome outcome)
         {
             var ownerBody = owner.GetBody();
             if (ownerBody == null || minions == null) return;
@@ -461,7 +576,7 @@ namespace Jaosnake.CeniReload.Core
                 var saved = minions[i];
                 if (saved == null || string.IsNullOrEmpty(saved.masterName)) continue;
                 var prefab = MasterCatalog.FindMasterPrefab(saved.masterName);
-                if (prefab == null) continue;
+                if (prefab == null) { outcome.Warn("CENIRELOAD_VALIDATE_ALLY", saved.masterName); continue; }
 
                 CharacterMaster restored = null;
                 foreach (var candidate in CharacterMaster.readOnlyInstancesList)
@@ -478,11 +593,11 @@ namespace Jaosnake.CeniReload.Core
                 {
                     // DroneTech's skill/repair queue owns these companions. It may
                     // finish after this coroutine; manually summoning creates doubles.
-                    if (IsSkillManagedMinion(owner, prefab)) continue;
+                    if (IsSkillManagedMinion(owner, prefab)) { outcome.Warn("CENIRELOAD_RESULT_SKILL_ALLY", saved.masterName); continue; }
                     var masterComponent = prefab.GetComponent<CharacterMaster>();
                     var bodyPrefab = masterComponent != null ? masterComponent.bodyPrefab : null;
                     var body = bodyPrefab != null ? bodyPrefab.GetComponent<CharacterBody>() : null;
-                    if (body == null) continue;
+                    if (body == null) { outcome.Warn("CENIRELOAD_RESULT_ALLY", saved.masterName); continue; }
 
                     Vector3 position;
                     if (saved.hasBodyPosition && IsFinite(saved.bodyFootPosition)) position = saved.bodyFootPosition;
@@ -494,6 +609,7 @@ namespace Jaosnake.CeniReload.Core
                             new Xoroshiro128Plus(seed + (ulong)i));
                         if (!safe.HasValue)
                         {
+                            outcome.Warn("CENIRELOAD_RESULT_ALLY", saved.masterName);
                             CeniReloadPlugin.Log?.LogWarning($"No safe position found for checkpoint ally '{saved.masterName}'.");
                             continue;
                         }
@@ -510,11 +626,12 @@ namespace Jaosnake.CeniReload.Core
                     }.Perform();
                 }
 
-                if (restored == null) continue;
+                if (restored == null) { outcome.Warn("CENIRELOAD_RESULT_ALLY", saved.masterName); continue; }
+                outcome.AlliesRestored++;
                 reused.Add(restored);
                 if (saved.hasBodyPosition) RestoreBodyPosition(restored.GetBody(), saved.bodyFootPosition, saved.bodyYaw);
                 if (restored.inventory != null)
-                    RestoreInventory(restored.inventory, saved.items, saved.tempItems, saved.equipments, 0, 0, 0);
+                    RestoreInventory(restored.inventory, saved.items, saved.tempItems, saved.equipments, 0, 0, 0, outcome);
             }
         }
 
@@ -535,7 +652,11 @@ namespace Jaosnake.CeniReload.Core
                 {
                     ReplacePermanentInventory(enemyInv, snap.simulacrumEnemyItems);
                 }
+                else if (snap.simulacrumEnemyItems != null && snap.simulacrumEnemyItems.Count > 0)
+                    _outcome?.Warn("CENIRELOAD_RESULT_ERROR", "Simulacrum inventory");
             }
+            else if (snap.simulacrumEnemyItems != null && snap.simulacrumEnemyItems.Count > 0)
+                _outcome?.Warn("CENIRELOAD_RESULT_ERROR", "Simulacrum inventory");
 
             if (snap.evolutionMonsterItems != null && snap.evolutionMonsterItems.Count > 0 &&
                 EvolutionInventoryField?.GetValue(null) is Inventory monsterInv && monsterInv != null)
@@ -546,13 +667,15 @@ namespace Jaosnake.CeniReload.Core
                     EvolutionIteratorField.SetValue(null, snap.evolutionItemIterator);
                 }
             }
+            else if (snap.evolutionMonsterItems != null && snap.evolutionMonsterItems.Count > 0)
+                _outcome?.Warn("CENIRELOAD_RESULT_ERROR", "Evolution inventory");
         }
 
-        private static void RestoreDevotionItems(CharacterMaster master, List<ItemEntry> devotionItems)
+        private static void RestoreDevotionItems(CharacterMaster master, List<ItemEntry> devotionItems, RestoreOutcome outcome)
         {
             if (master == null || devotionItems == null || devotionItems.Count == 0) return;
             var list = DevotionInstanceListField?.GetValue(null) as List<DevotionInventoryController>;
-            if (list == null) return;
+            if (list == null) { outcome?.Warn("CENIRELOAD_RESULT_ERROR", "Devotion inventory"); return; }
 
             for (int i = 0; i < list.Count; i++)
             {
@@ -563,8 +686,10 @@ namespace Jaosnake.CeniReload.Core
                 {
                     ReplacePermanentInventory(devInv, devotionItems);
                 }
-                break;
+                else outcome?.Warn("CENIRELOAD_RESULT_ERROR", "Devotion inventory");
+                return;
             }
+            outcome?.Warn("CENIRELOAD_RESULT_ERROR", "Devotion inventory");
         }
 
         private static void ReplacePermanentInventory(Inventory inventory, List<ItemEntry> targetItems)
@@ -608,9 +733,9 @@ namespace Jaosnake.CeniReload.Core
             List<EquipmentEntry> equipments,
             uint infusionBonus,
             byte activeSlot,
-            byte activeSet)
+            byte activeSet, RestoreOutcome outcome = null)
         {
-            if (inventory == null) return;
+            if (inventory == null) { outcome?.Warn("CENIRELOAD_RESULT_ERROR", "inventory"); return; }
 
             if (items != null)
             {
@@ -621,7 +746,7 @@ namespace Jaosnake.CeniReload.Core
                     if (entry == null || entry.count <= 0 || string.IsNullOrEmpty(entry.itemName)) continue;
 
                     var itemIndex = ItemCatalog.FindItemIndex(entry.itemName);
-                    if (itemIndex == ItemIndex.None || ItemCatalog.GetItemDef(itemIndex) == null) continue;
+                    if (itemIndex == ItemIndex.None || ItemCatalog.GetItemDef(itemIndex) == null) { outcome?.Warn("CENIRELOAD_VALIDATE_ITEM", entry.itemName); continue; }
                     if (!targets.ContainsKey(itemIndex)) targets.Add(itemIndex, entry.count);
                 }
                 for (int i = 0; i < ItemCatalog.itemCount; i++)
@@ -650,7 +775,7 @@ namespace Jaosnake.CeniReload.Core
                     }
 
                     var itemIdx = ItemCatalog.FindItemIndex(temp.itemName);
-                    if (itemIdx == ItemIndex.None || ItemCatalog.GetItemDef(itemIdx) == null) continue;
+                    if (itemIdx == ItemIndex.None || ItemCatalog.GetItemDef(itemIdx) == null) { outcome?.Warn("CENIRELOAD_VALIDATE_ITEM", temp.itemName); continue; }
                     if (!targets.ContainsKey(itemIdx)) targets.Add(itemIdx, temp.rawValue);
                 }
                 for (int i = 0; i < ItemCatalog.itemCount; i++)
@@ -679,7 +804,9 @@ namespace Jaosnake.CeniReload.Core
                     if (eq == null || string.IsNullOrEmpty(eq.equipmentName)) continue;
 
                     var eqIdx = EquipmentCatalog.FindEquipmentIndex(eq.equipmentName);
-                    if (eqIdx == EquipmentIndex.None) continue;
+                    if (eqIdx == EquipmentIndex.None) { outcome?.Warn("CENIRELOAD_VALIDATE_EQUIPMENT", eq.equipmentName); continue; }
+                    if (eq.slot >= inventory.GetEquipmentSlotCount() || eq.set >= inventory.GetEquipmentSetCount())
+                    { outcome?.Warn("CENIRELOAD_VALIDATE_EQUIPMENT", eq.equipmentName); continue; }
 
                     var chargeFinish = eq.cooldownRemaining > 0.01f
                         ? Run.FixedTimeStamp.now + eq.cooldownRemaining
@@ -692,8 +819,10 @@ namespace Jaosnake.CeniReload.Core
                 }
             }
 
-            inventory.SetActiveEquipmentSlot(activeSlot);
-            inventory.SetActiveEquipmentSet(activeSet);
+            if (activeSlot < inventory.GetEquipmentSlotCount()) inventory.SetActiveEquipmentSlot(activeSlot);
+            else outcome?.Warn("CENIRELOAD_RESULT_ERROR", "active equipment slot");
+            if (activeSet < inventory.GetEquipmentSetCount()) inventory.SetActiveEquipmentSet(activeSet);
+            else outcome?.Warn("CENIRELOAD_RESULT_ERROR", "active equipment set");
         }
 
         private static RuleBook DeserializeRuleBook(string base64)

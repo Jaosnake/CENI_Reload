@@ -52,7 +52,7 @@ namespace Jaosnake.CeniReload.Core
 
             var snapshot = new CheckpointSnapshot
             {
-                schemaVersion = 2,
+                schemaVersion = 3,
                 profileKey = VaultRepository.GetCurrentProfileKey(),
                 gameModeName = GameModeCatalog.GetGameModeName(run.gameModeIndex),
                 stageSceneName = sceneDef.baseSceneName,
@@ -70,6 +70,7 @@ namespace Jaosnake.CeniReload.Core
             };
 
             StageRandomState.Capture(run, snapshot);
+            snapshot.randomStates = RunRandomState.Capture(run);
 
             if (EventFlagsField?.GetValue(run) is HashSet<string> flags)
             {
@@ -127,6 +128,7 @@ namespace Jaosnake.CeniReload.Core
             if (snapshot.players.Count == 0 || string.IsNullOrEmpty(snapshot.survivorBodyName))
                 return null;
 
+            SnapshotRestore.AppendWaitingPlayers(snapshot);
             bool isMultiplayer = snapshot.players.Count > 1 ||
                                  (NetworkUser.readOnlyInstancesList != null && NetworkUser.readOnlyInstancesList.Count > 1);
             snapshot.isMultiplayerRun = isMultiplayer;
@@ -165,6 +167,7 @@ namespace Jaosnake.CeniReload.Core
             };
 
             var playerBody = master.GetBody();
+            CharacterCheckpointState.Capture(playerBody, player);
             if (playerBody != null)
             {
                 player.hasBodyPosition = true;

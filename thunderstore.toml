@@ -4,7 +4,7 @@ schemaVersion = "0.0.1"
 [package]
 namespace = "Jaosnake"
 name = "CENI_RELOAD"
-versionNumber = "1.0.1"
+versionNumber = "1.0.2"
 description = "100% written-from-scratch stage checkpoint vault for Risk of Rain 2 with 5 slots per survivor, card-based UI, controller navigation, and EN/pt-BR localization."
 websiteUrl = "https://github.com/Jaosnake/CENI_Reload"
 containsNsfwContent = false

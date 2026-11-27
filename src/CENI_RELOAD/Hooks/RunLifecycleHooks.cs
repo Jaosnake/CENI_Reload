@@ -20,10 +20,17 @@ namespace Jaosnake.CeniReload.Hooks
         [HarmonyPatch(typeof(PreGameController), "Start")]
         private static void OnPreGameStartPostfix(PreGameController __instance)
         {
-            if (SnapshotRestore.AutoLaunchOnPreGame && __instance != null)
+            if (SnapshotRestore.PendingSnapshot != null && __instance != null)
             {
                 __instance.StartCoroutine(SnapshotRestore.TryAutoLaunchFromPreGame(__instance));
             }
+        }
+
+        [HarmonyPrefix]
+        [HarmonyPatch(typeof(PreGameController), "StartLaunch")]
+        private static bool OnStartLaunchPrefix(PreGameController __instance)
+        {
+            return !NetworkServer.active || SnapshotRestore.BeforeLaunch(__instance);
         }
 
         [HarmonyPrefix]
@@ -35,6 +42,7 @@ namespace Jaosnake.CeniReload.Hooks
                 _initializingRestoredRun = __instance;
                 SnapshotRestore.ApplyToRunStart(__instance);
             }
+            else if (NetworkServer.active) SnapshotRestore.ClearPending();
         }
 
         [HarmonyFinalizer]
@@ -80,10 +88,21 @@ namespace Jaosnake.CeniReload.Hooks
         [HarmonyPatch(typeof(Run), "SetupUserCharacterMaster")]
         private static void OnSetupUserCharacterMasterPostfix(NetworkUser user)
         {
-            if (NetworkServer.active && SnapshotRestore.IsRestoringRun && user != null && user.master != null)
+            if (NetworkServer.active && SnapshotRestore.CanRestorePlayers && user != null && user.master != null)
             {
                 SnapshotRestore.ApplyToPlayerMaster(user, user.master);
             }
+        }
+
+        [HarmonyPrefix]
+        [HarmonyPatch(typeof(Run), "ShouldAllowNewParticipant")]
+        private static bool OnShouldAllowNewParticipantPrefix(ref bool __result)
+        {
+            // The base game's DropIn rule can otherwise reject late users before
+            // a master exists. Enable this only for a resumed CENI run.
+            if (!NetworkServer.active || !SnapshotRestore.CanRestorePlayers) return true;
+            __result = true;
+            return false;
         }
 
         [HarmonyPostfix]
@@ -94,6 +113,7 @@ namespace Jaosnake.CeniReload.Hooks
 
             if (SnapshotRestore.IsRestoringRun)
             {
+                SnapshotRestore.MarkRestoreStageStarted();
                 __instance.StartCoroutine(SnapshotRestore.FinishRestoreOnStageStart(__instance));
                 return;
             }

@@ -57,6 +57,33 @@ namespace Jaosnake.CeniReload.UI
         private TextMeshProUGUI _loadButtonLabel;
         private MPButton _deleteButton;
         private TextMeshProUGUI _deleteButtonLabel;
+        private MPButton _backupButton;
+        private MPButton _reportButton;
+        private MPButton _cancelPreparedButton;
+        private TextMeshProUGUI _backupLabel;
+        private TextMeshProUGUI _reportLabel;
+        private TextMeshProUGUI _cancelPreparedLabel;
+        private VaultNoticePanel _notice;
+        private ScrollRect _inspectorScroll;
+        private float _nextRosterRefresh;
+
+        public static void OpenPreparedLobby()
+        {
+            var lobby = UnityEngine.Object.FindObjectOfType<CharacterSelectController>();
+            if (lobby == null) return;
+            var vault = AttachToLobby(lobby);
+            vault._selectedSnapshot = SnapshotRestore.PendingSnapshot;
+            vault._filterMode = VaultFilterMode.Multiplayer;
+            vault.SetModalOpen(true);
+        }
+
+        public void OpenPreparedCheckpoint()
+        {
+            if (!SnapshotRestore.WaitingForLobby) return;
+            _selectedSnapshot = SnapshotRestore.PendingSnapshot;
+            _filterMode = VaultFilterMode.Multiplayer;
+            SetModalOpen(true);
+        }
 
         private GameObject _deleteConfirmBar;
         private TextMeshProUGUI _confirmPromptText;
@@ -203,6 +230,23 @@ namespace Jaosnake.CeniReload.UI
         private void Update()
         {
             var primaryEs = ResolveActiveEventSystem();
+            if (_modalRoot != null && _modalRoot.activeSelf && !_isMainMenuMode && Time.unscaledTime >= _nextRosterRefresh &&
+                (_notice == null || !_notice.IsOpen) && (_deleteConfirmBar == null || !_deleteConfirmBar.activeSelf))
+            {
+                _nextRosterRefresh = Time.unscaledTime + 0.5f;
+                UpdateInspectorPanel();
+            }
+            if (_notice != null && _notice.IsOpen)
+            {
+                if (primaryEs != null && !_notice.Contains(primaryEs.currentSelectedGameObject)) FocusDefaultModalControl();
+                if (Input.GetKey(KeyCode.JoystickButton4) || Input.GetKey(KeyCode.PageUp)) _notice.Scroll(Time.unscaledDeltaTime);
+                if (Input.GetKey(KeyCode.JoystickButton5) || Input.GetKey(KeyCode.PageDown)) _notice.Scroll(-Time.unscaledDeltaTime);
+            }
+            else if (_inspectorScroll != null && _modalRoot != null && _modalRoot.activeSelf)
+            {
+                if (Input.GetKey(KeyCode.JoystickButton4) || Input.GetKey(KeyCode.PageUp)) _inspectorScroll.verticalNormalizedPosition = Mathf.Clamp01(_inspectorScroll.verticalNormalizedPosition + Time.unscaledDeltaTime);
+                if (Input.GetKey(KeyCode.JoystickButton5) || Input.GetKey(KeyCode.PageDown)) _inspectorScroll.verticalNormalizedPosition = Mathf.Clamp01(_inspectorScroll.verticalNormalizedPosition - Time.unscaledDeltaTime);
+            }
 
             string currentLang = RoR2.Language.currentLanguageName;
             if (!string.Equals(currentLang, _lastLanguageName, StringComparison.Ordinal))
@@ -284,7 +328,7 @@ namespace Jaosnake.CeniReload.UI
                 }
 
                 // Gamepad Lock / Unlock toggle: X (Xbox) / Square (PlayStation) / Y-left (Switch)
-                if (_selectedSnapshot != null && _lastActionFrame != Time.frameCount &&
+                if ((_notice == null || !_notice.IsOpen) && _selectedSnapshot != null && _lastActionFrame != Time.frameCount &&
                     (_deleteConfirmBar == null || !_deleteConfirmBar.activeSelf) &&
                     IsGamepadLockButtonPressed(primaryEs))
                 {
@@ -302,7 +346,8 @@ namespace Jaosnake.CeniReload.UI
                 if (cancelPressed && _lastActionFrame != Time.frameCount)
                 {
                     _lastActionFrame = Time.frameCount;
-                    if (_deleteConfirmBar != null && _deleteConfirmBar.activeSelf)
+                    if (_notice != null && _notice.IsOpen) { _notice.Close(); FocusDefaultModalControl(); }
+                    else if (_deleteConfirmBar != null && _deleteConfirmBar.activeSelf)
                     {
                         SetDeleteConfirmVisible(false);
                     }
@@ -1507,8 +1552,20 @@ namespace Jaosnake.CeniReload.UI
             _inspectorBody = UiFactory.CreateText("InspectorBody", rightPanel.transform, "", 14.5f, UiFactory.TextPrimary, TextAlignmentOptions.TopLeft);
             _inspectorBody.rectTransform.anchorMin = new Vector2(0f, 0f);
             _inspectorBody.rectTransform.anchorMax = new Vector2(1f, 1f);
-            _inspectorBody.rectTransform.offsetMin = new Vector2(18f, 166f);
+            _inspectorBody.rectTransform.offsetMin = new Vector2(18f, 256f);
             _inspectorBody.rectTransform.offsetMax = new Vector2(-18f, -72f);
+
+            var inspectorViewport = UiFactory.CreateRect("InspectorViewport", rightPanel.transform);
+            inspectorViewport.anchorMin = Vector2.zero; inspectorViewport.anchorMax = Vector2.one;
+            inspectorViewport.offsetMin = new Vector2(18f, 256f); inspectorViewport.offsetMax = new Vector2(-18f, -72f);
+            var inspectorBackground = inspectorViewport.gameObject.AddComponent<Image>(); inspectorBackground.color = new Color(0f, 0f, 0f, 0.01f);
+            inspectorViewport.gameObject.AddComponent<RectMask2D>();
+            _inspectorBody.transform.SetParent(inspectorViewport, false);
+            _inspectorBody.rectTransform.anchorMin = new Vector2(0f, 1f); _inspectorBody.rectTransform.anchorMax = Vector2.one;
+            _inspectorBody.rectTransform.pivot = new Vector2(0.5f, 1f); _inspectorBody.rectTransform.offsetMin = Vector2.zero; _inspectorBody.rectTransform.offsetMax = Vector2.zero;
+            _inspectorScroll = inspectorViewport.gameObject.AddComponent<ScrollRect>();
+            _inspectorScroll.content = _inspectorBody.rectTransform; _inspectorScroll.viewport = inspectorViewport;
+            _inspectorScroll.horizontal = false; _inspectorScroll.movementType = ScrollRect.MovementType.Clamped; _inspectorScroll.scrollSensitivity = 25f;
 
             _inspectorModStatus = UiFactory.CreateText("ModStatus", rightPanel.transform, "", 13f, UiFactory.AccentGreen, TextAlignmentOptions.Left, FontStyles.Italic);
             _inspectorModStatus.enableAutoSizing = true;
@@ -1518,7 +1575,7 @@ namespace Jaosnake.CeniReload.UI
             _inspectorModStatus.rectTransform.anchorMax = new Vector2(1f, 0f);
             _inspectorModStatus.rectTransform.pivot = new Vector2(0.5f, 0f);
             _inspectorModStatus.rectTransform.sizeDelta = new Vector2(-36f, 50f);
-            _inspectorModStatus.rectTransform.anchoredPosition = new Vector2(0f, 112f);
+            _inspectorModStatus.rectTransform.anchoredPosition = new Vector2(0f, 202f);
 
             _loadButton = UiFactory.CreateButton(
                 "LoadCheckpointButton",
@@ -1555,6 +1612,14 @@ namespace Jaosnake.CeniReload.UI
             delRect.pivot = new Vector2(0.5f, 0f);
             delRect.sizeDelta = new Vector2(-36f, 36f);
             delRect.anchoredPosition = new Vector2(0f, 16f);
+
+            _backupButton = UiFactory.CreateButton("PreviousBackup", rightPanel.transform, "", new Color(0.20f, 0.30f, 0.40f, 1f), Color.white, 12f,
+                OnClickBackup, out _backupLabel, _modalLayerKey);
+            _reportButton = UiFactory.CreateButton("LastRestoreReport", rightPanel.transform, "", new Color(0.20f, 0.30f, 0.40f, 1f), Color.white, 12f,
+                OnClickLastReport, out _reportLabel, _modalLayerKey);
+            _cancelPreparedButton = UiFactory.CreateButton("CancelPreparedCheckpoint", rightPanel.transform, "", new Color(0.40f, 0.22f, 0.14f, 1f), Color.white, 12f,
+                () => { if (!CanHandleModalButtonClick()) return; SnapshotRestore.CancelPrepared(); UpdateInspectorPanel(); }, out _cancelPreparedLabel, _modalLayerKey);
+            PositionUtilityButton(_backupButton, 166f); PositionUtilityButton(_reportButton, 133f); PositionUtilityButton(_cancelPreparedButton, 100f);
 
             var confirmPanel = UiFactory.CreatePanel("DeleteConfirmBar", rightPanel.transform, new Color(0.28f, 0.08f, 0.10f, 1f), UiFactory.AccentRed);
             var confRect = confirmPanel.rectTransform;
@@ -1648,6 +1713,7 @@ namespace Jaosnake.CeniReload.UI
             );
             UiFactory.StretchFull(_footerHintText.rectTransform, 16f, 2f);
             SyncFooterSpriteAsset();
+            _notice = new VaultNoticePanel(_modalRoot.transform, _modalLayerKey);
         }
 
         private void SyncFooterSpriteAsset()
@@ -1702,6 +1768,7 @@ namespace Jaosnake.CeniReload.UI
                     _focusCoroutine = null;
                 }
                 if (_modalLayerKey != null) _modalLayerKey.enabled = false;
+                _notice?.Close();
                 _modalRoot.SetActive(false);
 
                 if (wasOpen)
@@ -1724,7 +1791,7 @@ namespace Jaosnake.CeniReload.UI
 
         private bool CanHandleModalButtonClick()
         {
-            if (_modalRoot == null || !_modalRoot.activeSelf) return false;
+            if (_modalRoot == null || !_modalRoot.activeSelf || (_notice != null && _notice.IsOpen)) return false;
             if (Time.frameCount <= _openedFrame || _lastActionFrame == Time.frameCount) return false;
             _lastActionFrame = Time.frameCount;
             return true;
@@ -1793,6 +1860,9 @@ namespace Jaosnake.CeniReload.UI
         private void RefreshLocalization()
         {
             RefreshTriggerLabel();
+            _backupLabel.text = CeniReloadStrings.Get("CENIRELOAD_UI_BACKUP");
+            _reportLabel.text = CeniReloadStrings.Get("CENIRELOAD_UI_LAST_REPORT");
+            _cancelPreparedLabel.text = CeniReloadStrings.Get("CENIRELOAD_UI_CANCEL_PREPARED");
             _titleText.text = CeniReloadStrings.Get("CENIRELOAD_UI_TITLE");
             string subtitleBase = CeniReloadStrings.Get("CENIRELOAD_UI_SUBTITLE");
             _subtitleText.text = VaultRepository.IsUsingCloudStorage()
@@ -2157,6 +2227,7 @@ namespace Jaosnake.CeniReload.UI
 
         private void FocusDefaultModalControl()
         {
+            if (_notice != null && _notice.IsOpen) { SetSelectedGameObject(_notice.Confirm.gameObject); return; }
             MPButton target = GetSelectedOrFirstCardButton() ?? GetPrimaryActionButton() ?? _closeButton;
             if (target != null && target.gameObject.activeInHierarchy)
             {
@@ -2166,6 +2237,7 @@ namespace Jaosnake.CeniReload.UI
 
         private void WireModalNavigation()
         {
+            if (_notice != null && _notice.IsOpen) return;
             MPButton selectedCard = GetSelectedOrFirstCardButton();
             MPButton rightAction = GetPrimaryActionButton();
 
@@ -2212,6 +2284,17 @@ namespace Jaosnake.CeniReload.UI
             if (_confirmNoButton != null)
             {
                 SetExplicitNavigation(_confirmNoButton, loadActive ? _loadButton : _closeButton, null, _confirmYesButton, null);
+            }
+            var utilities = new List<MPButton>();
+            foreach (var button in new[] { _backupButton, _reportButton, _cancelPreparedButton, _loadButton, _deleteButton })
+                if (button != null && button.gameObject.activeInHierarchy && button.interactable) utilities.Add(button);
+            for (int i = 0; i < utilities.Count; i++)
+                SetExplicitNavigation(utilities[i], i == 0 ? _closeButton : utilities[i - 1],
+                    i + 1 < utilities.Count ? utilities[i + 1] : _closeButton, selectedCard ?? _filterButton, null);
+            if (confirmActive)
+            {
+                SetExplicitNavigation(_loadButton, _reportButton, _confirmNoButton, selectedCard, null);
+                SetExplicitNavigation(_confirmNoButton, _loadButton, _closeButton, _confirmYesButton, null);
             }
         }
 
@@ -2471,6 +2554,11 @@ namespace Jaosnake.CeniReload.UI
         private void UpdateInspectorPanel()
         {
             SetDeleteConfirmVisible(false, skipFocusShift: true);
+            _backupButton.interactable = _selectedSnapshot != null;
+            _cancelPreparedButton.interactable = SnapshotRestore.WaitingForLobby;
+            _loadButtonLabel.text = CeniReloadStrings.Get(_selectedSnapshot != null && _selectedSnapshot.isBackupPreview ? "CENIRELOAD_UI_RECOVER" :
+                SnapshotRestore.IsPrepared(_selectedSnapshot) ? "CENIRELOAD_UI_LAUNCH_PREPARED" :
+                _selectedSnapshot != null && _selectedSnapshot.IsMultiplayer() ? "CENIRELOAD_UI_PREPARE" : "CENIRELOAD_UI_BTN_LOAD");
 
             if (_selectedSnapshot == null)
             {
@@ -2547,6 +2635,8 @@ namespace Jaosnake.CeniReload.UI
                 $"<b>{CeniReloadStrings.Get("CENIRELOAD_UI_LABEL_SAVED_AT")}:</b> {s.FormatSavedDate()}" +
                 playersRosterLine;
 
+            _inspectorBody.rectTransform.sizeDelta = new Vector2(0f, Mathf.Max(_inspectorScroll.viewport.rect.height,
+                _inspectorBody.GetPreferredValues(_inspectorBody.text, _inspectorScroll.viewport.rect.width, 0f).y + 8f));
             if (missingSurvivor)
             {
                 _inspectorModStatus.fontStyle = FontStyles.Bold;
@@ -2555,7 +2645,7 @@ namespace Jaosnake.CeniReload.UI
                     "CENIRELOAD_UI_MISSING_SURVIVOR_WARN",
                     s.GetFirstMissingSurvivorName()
                 );
-                _loadButton.interactable = false;
+                _loadButton.interactable = true;
                 _deleteButton.interactable = !isLocked;
             }
             else if (isLocked)
@@ -2582,6 +2672,24 @@ namespace Jaosnake.CeniReload.UI
                 _loadButton.interactable = true;
                 _deleteButton.interactable = true;
             }
+
+            var check = SnapshotRestore.ValidateCheckpoint(s);
+            if (!check.CanLoad)
+            {
+                _inspectorModStatus.text = CeniReloadStrings.Get("CENIRELOAD_UI_VALIDATION_TITLE") + ": " + check.Issues.Find(i => i.Blocking);
+                _inspectorModStatus.color = UiFactory.AccentRed;
+                // Keep the action available to open the full scrollable error report.
+            }
+            if (s.isBackupPreview)
+            {
+                _inspectorModStatus.text = CeniReloadStrings.Get("CENIRELOAD_UI_BACKUP_NOTICE");
+                _inspectorModStatus.color = UiFactory.AccentAmber;
+                _loadButton.interactable = true;
+                _deleteButton.interactable = false;
+            }
+            _subtitleText.text = CeniReloadStrings.Get(SnapshotRestore.IsPrepared(s) ? "CENIRELOAD_LOBBY_READY" : "CENIRELOAD_UI_SUBTITLE");
+            _subtitleText.enableAutoSizing = true; _subtitleText.fontSizeMin = 9f; _subtitleText.fontSizeMax = 14f;
+            _backupButton.interactable = VaultRepository.LoadBackup(VaultRepository.GetCurrentProfileKey(), s.GetStorageBucket(), s.slotIndex) != null;
 
             _deleteButtonLabel.text = isLocked
                 ? CeniReloadStrings.Get("CENIRELOAD_UI_BTN_LOCKED")
@@ -2613,19 +2721,71 @@ namespace Jaosnake.CeniReload.UI
             }
         }
 
-        private void OnClickLoadSelected()
+        private static void PositionUtilityButton(MPButton button, float bottom)
+        {
+            var rect = button.GetComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0f, 0f); rect.anchorMax = new Vector2(1f, 0f);
+            rect.pivot = new Vector2(0.5f, 0f); rect.sizeDelta = new Vector2(-36f, 28f); rect.anchoredPosition = new Vector2(0f, bottom);
+        }
+
+        private void ShowNotice(string text, string action = null, Action callback = null)
+        {
+            _notice.Open(text, action, callback);
+            ScheduleFocusNextFrame(_notice.Confirm.gameObject);
+        }
+
+        private void OnClickLastReport()
         {
             if (!CanHandleModalButtonClick()) return;
-            if (_selectedSnapshot == null || _selectedSnapshot.HasMissingSurvivors()) return;
+            var report = SnapshotRestore.LastOutcome;
+            ShowNotice(report == null ? CeniReloadStrings.Get("CENIRELOAD_UI_NO_REPORT") :
+                CeniReloadStrings.Format(report.StatusKey, report.PlayersRestored, report.AlliesRestored) + "\n\n" + report.Details);
+        }
 
-            bool started = _isMainMenuMode
-                ? SnapshotRestore.BeginLoadFromMainMenu(_selectedSnapshot)
-                : SnapshotRestore.BeginLoadFromLobby(_selectedSnapshot);
+        private void OnClickBackup()
+        {
+            if (!CanHandleModalButtonClick() || _selectedSnapshot == null) return;
+            var backup = VaultRepository.LoadBackup(VaultRepository.GetCurrentProfileKey(), _selectedSnapshot.GetStorageBucket(), _selectedSnapshot.slotIndex);
+            if (backup == null) return;
+            _selectedSnapshot = backup;
+            UpdateInspectorPanel();
+            ShowNotice(CeniReloadStrings.Get("CENIRELOAD_UI_BACKUP_NOTICE"), CeniReloadStrings.Get("CENIRELOAD_UI_RECOVER"), RecoverSelectedBackup);
+        }
 
-            if (started)
+        private void RecoverSelectedBackup()
+        {
+            if (_selectedSnapshot == null) return;
+            var selected = _selectedSnapshot;
+            SnapshotRestore.CancelPrepared();
+            bool recovered = VaultRepository.RecoverBackup(VaultRepository.GetCurrentProfileKey(), selected.GetStorageBucket(), selected.slotIndex);
+            _selectedSnapshot = null;
+            RebuildSlotCards();
+            ShowNotice(CeniReloadStrings.Get(recovered ? "CENIRELOAD_UI_BACKUP_DONE" : "CENIRELOAD_UI_BACKUP_FAILED"));
+        }
+
+        private void OnClickLoadSelected()
+        {
+            if (!CanHandleModalButtonClick() || _selectedSnapshot == null) return;
+            if (_selectedSnapshot.isBackupPreview)
             {
-                SetModalOpen(false);
+                ShowNotice(CeniReloadStrings.Get("CENIRELOAD_UI_BACKUP_NOTICE"), CeniReloadStrings.Get("CENIRELOAD_UI_RECOVER"), RecoverSelectedBackup);
+                return;
             }
+            var check = SnapshotRestore.ValidateCheckpoint(_selectedSnapshot);
+            if (!check.CanLoad) { ShowNotice(CeniReloadStrings.Get("CENIRELOAD_UI_VALIDATION_TITLE") + "\n\n" + check); return; }
+            var selected = _selectedSnapshot;
+            if (check.Issues.Count > 0)
+                ShowNotice(CeniReloadStrings.Get("CENIRELOAD_UI_VALIDATION_TITLE") + "\n\n" + check,
+                    CeniReloadStrings.Get("CENIRELOAD_UI_LOAD_WARNINGS"), () => StartSelected(selected));
+            else StartSelected(selected);
+        }
+
+        private void StartSelected(CheckpointSnapshot selected)
+        {
+            bool started = _isMainMenuMode ? SnapshotRestore.BeginLoadFromMainMenu(selected) : SnapshotRestore.BeginLoadFromLobby(selected);
+            if (!started) { ShowNotice(SnapshotRestore.ValidateCheckpoint(selected).ToString()); return; }
+            if (SnapshotRestore.WaitingForLobby && !_isMainMenuMode) { UpdateInspectorPanel(); return; }
+            SetModalOpen(false);
         }
 
         private string BuildMultiplayerRosterText(CheckpointSnapshot snap)
@@ -2645,14 +2805,15 @@ namespace Jaosnake.CeniReload.UI
             }
 
             var sb = new System.Text.StringBuilder();
-            sb.Append($"\n<b>{CeniReloadStrings.Get("CENIRELOAD_UI_LABEL_PLAYERS")}:</b> ");
+            int presentCount = snap.players.FindAll(p => p != null && !string.IsNullOrEmpty(p.playerId) && lobbyIds.Contains(p.playerId)).Count;
+            sb.Append($"\n<b>{CeniReloadStrings.Get("CENIRELOAD_UI_LABEL_PLAYERS")}:</b> {presentCount}/{snap.players.Count}\n");
             for (int i = 0; i < snap.players.Count; i++)
             {
                 var p = snap.players[i];
                 if (p == null) continue;
                 if (i > 0) sb.Append(", ");
 
-                string pName = !string.IsNullOrEmpty(p.playerName) ? p.playerName : $"P{i + 1}";
+                string pName = CheckpointIssue.Escape(!string.IsNullOrEmpty(p.playerName) ? p.playerName : $"P{i + 1}");
                 if (hasLobby && !string.IsNullOrEmpty(p.playerId))
                 {
                     bool present = lobbyIds.Contains(p.playerId);

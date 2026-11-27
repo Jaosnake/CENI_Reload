@@ -7,7 +7,7 @@ using IOPath = System.IO.Path;
 
 namespace Jaosnake.CeniReload.Localization
 {
-    public static class CeniReloadStrings
+    public static partial class CeniReloadStrings
     {
         private static readonly Dictionary<string, string> English = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
@@ -167,6 +167,9 @@ namespace Jaosnake.CeniReload.Localization
             {
                 return extVal;
             }
+
+            if (currentLang.StartsWith("pt", StringComparison.OrdinalIgnoreCase) && ExtraPortuguese.TryGetValue(key, out string extraPt)) return extraPt;
+            if (ExtraEnglish.TryGetValue(key, out string extraEn)) return extraEn;
 
             if (currentLang.Equals("pt-BR", StringComparison.OrdinalIgnoreCase) ||
                 currentLang.StartsWith("pt", StringComparison.OrdinalIgnoreCase))

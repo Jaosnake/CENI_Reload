@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.2
+
+- Browse and recover the previous checkpoint backup, check missing content before loading, and inspect a report of restored or skipped data.
+- Prepare a co-op lobby and start with 3/4, 2/4 or only the host. Saved friends can join later once each, while new players start fresh; late joins use the current stage spawn.
+- New saves retain more run random-generator state, health, shield, barrier and local skill charges/cooldowns. Remote skill state remains native in this version; older saves cannot recover data they never recorded.
+
 ## 1.0.1
 
 - New checkpoints record player and ally positions and stage generation state. Loading reuses existing allies, leaves DroneTech skill drones to the game, and uses safe placement for allies in older saves; older saves cannot recover positions they never recorded.

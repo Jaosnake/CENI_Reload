@@ -6,7 +6,7 @@ namespace Jaosnake.CeniReload.Storage
 {
     internal static class AtomicCheckpointFile
     {
-        public static void Write(string destination, string json)
+        public static void Write(string destination, string json, string backupDestination = null)
         {
             // Keep the temporary file on the same volume for atomic rename/replace.
             string temporary = destination + "." + Guid.NewGuid().ToString("N") + ".tmp";
@@ -20,7 +20,7 @@ namespace Jaosnake.CeniReload.Storage
                 }
 
                 if (File.Exists(destination))
-                    File.Replace(temporary, destination, destination + ".bak");
+                    File.Replace(temporary, destination, backupDestination ?? destination + ".bak");
                 else
                     File.Move(temporary, destination);
             }

@@ -24,6 +24,7 @@ namespace Jaosnake.CeniReload.Hooks
             if (__instance == null) return;
             var vault = CeniReloadVaultController.AttachToLobby(__instance);
             vault?.RefreshTriggerLabel();
+            vault?.OpenPreparedCheckpoint();
         }
 
         [HarmonyPostfix]

@@ -10,7 +10,8 @@ namespace Jaosnake.CeniReload.Model
     [Serializable]
     public class CheckpointSnapshot
     {
-        public int schemaVersion = 2;
+        public int schemaVersion = 3;
+        [NonSerialized] public bool isBackupPreview;
         public int slotIndex;
         public bool isLocked;
         public bool isMultiplayerRun;
@@ -40,6 +41,7 @@ namespace Jaosnake.CeniReload.Model
         public string ruleBookBase64;
         public ulong teamExperience;
         public List<string> eventFlags = new List<string>();
+        public List<RandomSnapshot> randomStates = new List<RandomSnapshot>();
 
         // Extra modes & artifacts (Simulacrum / Evolution)
         public int simulacrumWaveIndex;
@@ -232,6 +234,11 @@ namespace Jaosnake.CeniReload.Model
         public bool hasBodyPosition;
         public Vector3 bodyFootPosition;
         public float bodyYaw;
+        public bool hasVitalState;
+        public float health;
+        public float shield;
+        public float barrier;
+        public List<SkillSnapshot> skills = new List<SkillSnapshot>();
         public uint money;
         public uint voidCoins;
         public float luck;
@@ -244,6 +251,16 @@ namespace Jaosnake.CeniReload.Model
         public List<EquipmentEntry> equipments = new List<EquipmentEntry>();
         public List<MinionSnapshot> minions = new List<MinionSnapshot>();
         public List<ItemEntry> devotionItems = new List<ItemEntry>();
+
+        public PlayerSnapshot ForLaterStage()
+        {
+            // Inventory/loadout entries are immutable during restoration. Clone
+            // the position-bearing records so the source checkpoint is untouched.
+            var copy = (PlayerSnapshot)MemberwiseClone();
+            copy.hasBodyPosition = false;
+            copy.minions = minions?.ConvertAll(m => m?.ForLaterStage());
+            return copy;
+        }
     }
 
     [Serializable]
@@ -281,6 +298,13 @@ namespace Jaosnake.CeniReload.Model
         public List<ItemEntry> items = new List<ItemEntry>();
         public List<TempItemEntry> tempItems = new List<TempItemEntry>();
         public List<EquipmentEntry> equipments = new List<EquipmentEntry>();
+
+        public MinionSnapshot ForLaterStage()
+        {
+            var copy = (MinionSnapshot)MemberwiseClone();
+            copy.hasBodyPosition = false;
+            return copy;
+        }
     }
 
     [Serializable]
@@ -288,5 +312,23 @@ namespace Jaosnake.CeniReload.Model
     {
         public string guid;
         public string version;
+    }
+
+    [Serializable]
+    public class RandomSnapshot
+    {
+        public string field;
+        public ulong state0;
+        public ulong state1;
+    }
+
+    [Serializable]
+    public class SkillSnapshot
+    {
+        public int componentIndex;
+        public string skillName;
+        public string definitionName;
+        public int stock;
+        public float rechargeStopwatch;
     }
 }

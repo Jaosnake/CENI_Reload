@@ -103,7 +103,8 @@ namespace Jaosnake.CeniReload.Storage
                 {
                     fs.CreateDirectory(dir);
                 }
-                fs.WriteAllText(filePath, json, Encoding.UTF8);
+                if (fs.FileExists(filePath)) fs.CopyFile(filePath, new UPath(filePath.FullName + ".bak"), true);
+                fs.WriteAllText(filePath, json, new UTF8Encoding(false, true));
                 return true;
             }
 
@@ -115,28 +116,31 @@ namespace Jaosnake.CeniReload.Storage
             return true;
         }
 
-        private static string ReadSlotJson(string profileKey, string bucketKey, int slotIndex)
+        private static string ReadSlotJson(string profileKey, string bucketKey, int slotIndex, bool backup = false)
         {
             if (IsUsingCloudStorage())
             {
                 var fs = RoR2Application.cloudStorage;
                 UPath path = GetCloudSlotPath(profileKey, bucketKey, slotIndex);
+                if (backup) path = new UPath(path.FullName + ".bak");
                 if (!fs.FileExists(path)) return null;
-                return fs.ReadAllText(path, Encoding.UTF8);
+                return fs.ReadAllText(path, new UTF8Encoding(false, true));
             }
 
-            string localPath = GetLocalSlotFilePath(profileKey, bucketKey, slotIndex);
+            string localPath = GetLocalSlotFilePath(profileKey, bucketKey, slotIndex) + (backup ? ".bak" : "");
             if (!File.Exists(localPath)) return null;
-            return File.ReadAllText(localPath, Encoding.UTF8);
+            return File.ReadAllText(localPath, new UTF8Encoding(false, true));
         }
 
         private static bool SlotFileExists(string profileKey, string bucketKey, int slotIndex)
         {
             if (IsUsingCloudStorage())
             {
-                return RoR2Application.cloudStorage.FileExists(GetCloudSlotPath(profileKey, bucketKey, slotIndex));
+                var path = GetCloudSlotPath(profileKey, bucketKey, slotIndex);
+                return RoR2Application.cloudStorage.FileExists(path) || RoR2Application.cloudStorage.FileExists(new UPath(path.FullName + ".bak"));
             }
-            return File.Exists(GetLocalSlotFilePath(profileKey, bucketKey, slotIndex));
+            string pathLocal = GetLocalSlotFilePath(profileKey, bucketKey, slotIndex);
+            return File.Exists(pathLocal) || File.Exists(pathLocal + ".bak");
         }
 
         private static void DeleteSlotFile(string profileKey, string bucketKey, int slotIndex)
@@ -148,6 +152,8 @@ namespace Jaosnake.CeniReload.Storage
                 {
                     RoR2Application.cloudStorage.DeleteFile(path);
                 }
+                UPath backup = new UPath(path.FullName + ".bak");
+                if (RoR2Application.cloudStorage.FileExists(backup)) RoR2Application.cloudStorage.DeleteFile(backup);
                 return;
             }
 
@@ -156,6 +162,7 @@ namespace Jaosnake.CeniReload.Storage
             {
                 File.Delete(localPath);
             }
+            if (File.Exists(localPath + ".bak")) File.Delete(localPath + ".bak");
         }
 
         public static int PickAutoSaveSlot(string profileKey, string bucketKey)
@@ -172,7 +179,7 @@ namespace Jaosnake.CeniReload.Storage
             for (int i = 0; i < MaxSlotsPerSurvivor; i++)
             {
                 var snap = slots[i];
-                if (snap == null || snap.isLocked) continue;
+                if (snap == null || snap.isLocked || snap.isBackupPreview) continue;
 
                 if (DateTime.TryParse(snap.savedUtcIso, CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal, out DateTime t))
                 {
@@ -218,7 +225,8 @@ namespace Jaosnake.CeniReload.Storage
         {
             newLockedState = false;
             var snapshot = LoadSlot(profileKey, bucketKey, slotIndex);
-            if (snapshot == null) return false;
+            if (snapshot == null || snapshot.isBackupPreview) return false;
+            if (!Core.CheckpointValidation.InspectStructure(snapshot).CanLoad) return false;
 
             snapshot.isLocked = !snapshot.isLocked;
             newLockedState = snapshot.isLocked;
@@ -241,6 +249,8 @@ namespace Jaosnake.CeniReload.Storage
         {
             if (snapshot == null || string.IsNullOrEmpty(snapshot.survivorBodyName))
                 return SaveSlotResult.Failed;
+            if (snapshot.isBackupPreview || !Core.CheckpointValidation.InspectStructure(snapshot).CanLoad)
+                return SaveSlotResult.Failed;
 
             try
             {
@@ -257,6 +267,7 @@ namespace Jaosnake.CeniReload.Storage
                 if (targetSlot >= 1 && targetSlot <= MaxSlotsPerSurvivor)
                 {
                     var existing = LoadSlot(profileKey, bucketKey, targetSlot);
+                    if (existing != null && existing.isBackupPreview) return SaveSlotResult.Failed;
                     if (existing != null && existing.isLocked)
                     {
                         CeniReloadPlugin.Log?.LogWarning($"Refused to overwrite locked checkpoint: {bucketKey} Slot {targetSlot}.");
@@ -269,6 +280,7 @@ namespace Jaosnake.CeniReload.Storage
                     slot = PickAutoSaveSlot(profileKey, bucketKey);
                     if (slot == NoAvailableSlot)
                     {
+                        if (GetSurvivorSlots(profileKey, bucketKey).Any(s => s != null && s.isBackupPreview)) return SaveSlotResult.Failed;
                         CeniReloadPlugin.Log?.LogWarning($"Auto-save skipped: all {MaxSlotsPerSurvivor} slots for {bucketKey} are locked.");
                         return SaveSlotResult.AllSlotsLocked;
                     }
@@ -297,29 +309,65 @@ namespace Jaosnake.CeniReload.Storage
             return SaveSnapshotWithStatus(snapshot, targetSlot) == SaveSlotResult.Saved;
         }
 
+        private static CheckpointSnapshot ParseSlot(string json, string profileKey, string bucketKey, int slotIndex, bool backup)
+        {
+            if (string.IsNullOrWhiteSpace(json)) return null;
+            StrictJson.Validate(json);
+            var snapshot = JsonUtility.FromJson<CheckpointSnapshot>(json);
+            if (snapshot == null || string.IsNullOrEmpty(snapshot.stageSceneName) || snapshot.players == null || snapshot.players.Count == 0)
+                throw new FormatException("Incomplete checkpoint.");
+            // Storage address is authoritative; never trust an embedded slot/path.
+            snapshot.slotIndex = slotIndex;
+            snapshot.profileKey = profileKey;
+            snapshot.vaultBucket = bucketKey;
+            snapshot.isBackupPreview = backup;
+            return snapshot;
+        }
+
+        public static CheckpointSnapshot LoadBackup(string profileKey, string bucketKey, int slotIndex)
+        {
+            if (slotIndex < 1 || slotIndex > MaxSlotsPerSurvivor || string.IsNullOrEmpty(bucketKey)) return null;
+            try { return ParseSlot(ReadSlotJson(profileKey, bucketKey, slotIndex, true), profileKey, bucketKey, slotIndex, true); }
+            catch (Exception ex) { CeniReloadPlugin.Log?.LogWarning($"Unreadable backup for {bucketKey} Slot {slotIndex}: {ex.Message}"); return null; }
+        }
+
         public static CheckpointSnapshot LoadSlot(string profileKey, string bucketKey, int slotIndex)
         {
             if (slotIndex < 1 || slotIndex > MaxSlotsPerSurvivor || string.IsNullOrEmpty(bucketKey)) return null;
-
             try
             {
-                string json = ReadSlotJson(profileKey, bucketKey, slotIndex);
-                if (string.IsNullOrEmpty(json)) return null;
+                var primary = ParseSlot(ReadSlotJson(profileKey, bucketKey, slotIndex), profileKey, bucketKey, slotIndex, false);
+                if (primary != null) return primary;
+            }
+            catch (Exception ex) { CeniReloadPlugin.Log?.LogWarning($"Unreadable checkpoint at '{bucketKey}/slot_{slotIndex}': {ex.Message}"); }
+            // Offer the readable backup in the Vault; do not silently overwrite anything.
+            return LoadBackup(profileKey, bucketKey, slotIndex);
+        }
 
-                var snapshot = JsonUtility.FromJson<CheckpointSnapshot>(json);
-                if (snapshot == null || string.IsNullOrEmpty(snapshot.stageSceneName)) return null;
-                snapshot.slotIndex = slotIndex;
-                if (string.IsNullOrEmpty(snapshot.vaultBucket))
-                {
-                    snapshot.vaultBucket = bucketKey;
-                }
-                return snapshot;
-            }
-            catch (Exception ex)
+        public static bool RecoverBackup(string profileKey, string bucketKey, int slotIndex)
+        {
+            try
             {
-                CeniReloadPlugin.Log?.LogWarning($"Corrupted checkpoint at '{bucketKey}/slot_{slotIndex}': {ex.Message}");
-                return null;
+                var backup = LoadBackup(profileKey, bucketKey, slotIndex);
+                if (backup == null || !Core.CheckpointValidation.InspectStructure(backup).CanLoad) return false;
+                var current = LoadSlot(profileKey, bucketKey, slotIndex);
+                if (current != null && !current.isBackupPreview && current.isLocked) return false;
+                string json = ReadSlotJson(profileKey, bucketKey, slotIndex, true);
+                if (IsUsingCloudStorage())
+                {
+                    var fs = RoR2Application.cloudStorage;
+                    var path = GetCloudSlotPath(profileKey, bucketKey, slotIndex);
+                    if (fs.FileExists(path)) fs.CopyFile(path, new UPath(path.FullName + ".damaged"), true);
+                    fs.CopyFile(new UPath(path.FullName + ".bak"), path, true);
+                }
+                else
+                {
+                    string path = GetLocalSlotFilePath(profileKey, bucketKey, slotIndex);
+                    AtomicCheckpointFile.Write(path, json, path + ".damaged");
+                }
+                return true;
             }
+            catch (Exception ex) { CeniReloadPlugin.Log?.LogError($"Backup recovery failed: {ex}"); return false; }
         }
 
         public static CheckpointSnapshot[] GetSurvivorSlots(string profileKey, string bucketKey)
@@ -349,10 +397,8 @@ namespace Jaosnake.CeniReload.Storage
                         foreach (UPath bucketDir in fs.EnumerateDirectories(profileDir))
                         {
                             string bucketName = bucketDir.GetName();
-                            foreach (UPath file in fs.EnumerateFiles(bucketDir, "*" + FileExtension))
-                            {
-                                TryAddSnapshotFromJson(fs.ReadAllText(file, Encoding.UTF8), bucketName, list);
-                            }
+                            foreach (var snapshot in GetSurvivorSlots(profileKey, bucketName))
+                                if (snapshot != null) list.Add(snapshot);
                         }
                     }
                 }
@@ -364,10 +410,8 @@ namespace Jaosnake.CeniReload.Storage
                         foreach (string bucketDir in Directory.GetDirectories(profileDir))
                         {
                             string bucketName = IOPath.GetFileName(bucketDir);
-                            foreach (string file in Directory.GetFiles(bucketDir, "*" + FileExtension))
-                            {
-                                TryAddSnapshotFromJson(File.ReadAllText(file, Encoding.UTF8), bucketName, list);
-                            }
+                            foreach (var snapshot in GetSurvivorSlots(profileKey, bucketName))
+                                if (snapshot != null) list.Add(snapshot);
                         }
                     }
                 }
@@ -379,27 +423,6 @@ namespace Jaosnake.CeniReload.Storage
 
             list.Sort((a, b) => string.Compare(b.savedUtcIso, a.savedUtcIso, StringComparison.Ordinal));
             return list;
-        }
-
-        private static void TryAddSnapshotFromJson(string json, string bucketName, List<CheckpointSnapshot> list)
-        {
-            if (string.IsNullOrEmpty(json)) return;
-            try
-            {
-                var snap = JsonUtility.FromJson<CheckpointSnapshot>(json);
-                if (snap != null && !string.IsNullOrEmpty(snap.stageSceneName))
-                {
-                    if (string.IsNullOrEmpty(snap.vaultBucket))
-                    {
-                        snap.vaultBucket = bucketName;
-                    }
-                    list.Add(snap);
-                }
-            }
-            catch
-            {
-                // Ignore unreadable files
-            }
         }
 
         public static bool DeleteSlot(string profileKey, string bucketKey, int slotIndex)
