@@ -1,5 +1,9 @@
 # 🧤 C.E.N.I RELOAD (`CENI_RELOAD`) — Checkpoint Vault
 
+## Package privacy
+
+The [immutable project privacy rule (PT-BR)](https://github.com/Jaosnake/ror2-multi-language-pack/blob/main/docs/PRIVACIDADE_PACOTES.md) applies to C.E.N.I. source, test builds, backups and releases. Check each binary's debug metadata and inspect the complete ZIP before sharing.
+
 > ✨ **100% Written From Scratch — Original Standalone Project**  
 > **C.E.N.I RELOAD** (**C**hrono-**E**nhanced **N**exus of **I**teration) is a completely original stage checkpoint vault for **Risk of Rain 2**, designed and built **100% from scratch** by **Jaosnake** under the **MIT License**.  
 > Zero third-party mod code • Standalone HarmonyX (`Jaosnake.CeniReload`) • Single dependency (`BepInExPack`) • Custom `.cenireload.json` format • Redesigned two-column Card Vault UI.
